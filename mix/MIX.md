@@ -18,9 +18,12 @@ pins unsloth #385/#386 (règle de vigilance LA de AGENTS.md).
 ## Limitations connues
 
 - UI web désactivée au build (`-DLLAMA_USE_PREBUILT_UI=OFF`) :
-  le bucket HF ne sert plus les dists appariés aux vieux tags
-  (b12325, b12292 : 404 vérifiés), et le fallback `latest`
-  apporte un layout SvelteKit incompatible avec la validation
-  de b12292. Recovery manuel si réactivé : `rm -rf build/tools/ui`.
+  le resolver de version a saisi le numéro b12325, venu du fetch du
+  fork rdna3 (tag inexistant sur ggml-org) — le dist HF « apparié »
+  à ce numéro ne peut pas exister, et le fallback `latest` apporte
+  un layout SvelteKit incompatible avec la validation de b12292
+  (vérifié : b12292 lui-même n'est plus servi non plus, 404).
+  Recovery manuel si réactivé : `rm -rf build/tools/ui`, puis
+  reconfigure avec le drapeau.
 - Serveur headless attendu : avertissement CMake « no assets
   available » normal, pas une erreur.
