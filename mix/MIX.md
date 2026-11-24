@@ -2,7 +2,13 @@
 
 ## Base
 
-- Tag de base : b12292 (af6b5243d), choix 2026-11-23.
+- Courante : b12292 (af6b5243d), choix 2026-11-23.
+- Cycle en cours : b12670 (239242322), choix 2026-11-23 au soir —
+  dernier tag amont confirmé par ls-remote (ggml-org), porteuses
+  vérifiées par ancêtre : arch inkling2 5c008e000, fix experts host
+  5bacb7c, compact bias #32740 (= tête du tag). Merge --no-ff à
+  poser ; couple banc : vanilla b12670 vs mix-b12670-rN, recette
+  prod (FA_QUANTS=all, LTO, NATIVE, amdclang theRock).
 
 ## Couches
 
@@ -11,9 +17,12 @@
 
 ## Conflits
 
-Néant pour l'instant. Connu à venir : la couche
-inkling/upstream-opt transporte upstream #32740, concurrent des
-pins unsloth #385/#386 (règle de vigilance LA de AGENTS.md).
+Néant en cours. Reporté (arbitrage propriétaire au moment voulu,
+jamais seul — AGENTS § Conflits) : la base b12670 transporte
+upstream #32740 (compact bias FLASH_ATTN_EXT) en natif, concurrent
+des pins unsloth #385/#386 (biais relatif FA), ABSENTS du mix ; une
+future couche pins unsloth devra arbitrer les deux routes — elles
+ne coexisteront jamais dans un même binaire.
 
 ## Limitations connues
 
