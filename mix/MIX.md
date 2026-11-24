@@ -36,8 +36,8 @@
   avec la couche rdna3 résolu à la main : type_K/type_V et
   use_rows/indexed_bias coexistent ; biais indexé et lignes K/V restent sur
   le chemin f16. test-backend-ops complet 21438/21438. NB : l'amont refuse
-  le biais indexé côté CPU (ggml-cpu.cpp) — une couche d'attention laissée
-  au CPU n'a donc pas de backend ; sans effet tant que tout tient au GPU.
+  le biais indexé côté CPU (ggml-cpu.cpp) — refus levé chez nous, voir le
+  calque « code à nous » ci-dessous.
   RETRAIT : dès qu'une PR CUDA/HIP du biais indexé entre dans la base amont.
 - pin: CUDA: pack several short rows per block in mul_mat_vec_f (unslothai/llama.cpp#400, commit a5667a9c0) — couche 2, liste A approuvée par mesure (banc r5 : Inkling tg +16,6 % pour l'ensemble des 7 pins).
 - pin: CUDA: fuse the SiTU gate of the MoE experts (unslothai/llama.cpp#402, commit 0bfd204bd) — couche 2, liste A approuvée par mesure (banc r5 : Inkling tg +16,6 % pour l'ensemble des 7 pins).
@@ -54,6 +54,16 @@
   #77 corrige l'issue amont #30175 (prefill FA non déterministe sur RDNA3).
   Mesures : banc r6 (Gemma4 tg +12,7 %, prefill +9,8 % ; Qwen3.6 +8,3 % ;
   Inkling +1,7 %) et r8 (ensemble).
+- calque « code à nous » (b92222d86, merge 52b91bc1a, approuvé par le
+  propriétaire le 2026-11-24) : ggml-cpu accepte FLASH_ATTN_EXT avec biais
+  indexé (retrait d'une garde de supports_op ajoutée par
+  ggml-org/llama.cpp#32740 ; le noyau CPU de référence est amont). Motif :
+  les 24 cas de biais indexé de test-backend-ops étaient sautés faute de
+  référence CPU. Banc r11 (Inkling UD-Q4_K_XL, experts en mémoire hôte) :
+  aucun effet à l'exécution. RETRAIT : si l'amont lève le refus.
+- tests: cas de test de #401, #414, rafasmour #73 et #98 réintégrés
+  verbatim (même merge) — les mentions « cas de test non repris » ci-dessus
+  sont closes.
 
 ## Conflits
 
