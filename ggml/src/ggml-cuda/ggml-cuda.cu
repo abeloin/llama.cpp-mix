@@ -2318,7 +2318,8 @@ static bool ggml_cuda_should_fuse_mul_mat(const ggml_tensor * ffn_up,
     return true;
 }
 
-static bool ggml_cuda_should_fuse_mul_mat_vec_f(const ggml_tensor * tensor, const ggml_tensor * gate = nullptr) {
+// unary: the fusion of an activation (sigmoid, or bias + softplus + factor), which float weights support for a few columns
+static bool ggml_cuda_should_fuse_mul_mat_vec_f(const ggml_tensor * tensor, const ggml_tensor * gate = nullptr, const bool unary = false) {
     ggml_tensor *       src0 = tensor->src[0];
     ggml_tensor *       src1 = tensor->src[1];
     const ggml_tensor * dst  = tensor;
@@ -2338,8 +2339,9 @@ static bool ggml_cuda_should_fuse_mul_mat_vec_f(const ggml_tensor * tensor, cons
         return false;
     }
 
-    //we only support fusion for ncols_dst = 1
-    if (tensor->op == GGML_OP_MUL_MAT && dst->ne[1] != 1) {
+    //we only support fusion for ncols_dst = 1, and the activation of F32 weights for the columns of mul_mat_vec_f
+    if (tensor->op == GGML_OP_MUL_MAT && dst->ne[1] != 1 &&
+            !(unary && src0->type == GGML_TYPE_F32 && dst->ne[1] <= MMVF_MAX_BATCH_SIZE)) {
         return false;
     }
 
@@ -3593,9 +3595,10 @@ static bool ggml_cuda_should_fuse_rms_norm_mul_rope(const ggml_tensor * rms_norm
         return false;
     }
 
-    // the fused kernel handles the norm/neox rope modes only
+    // the fused kernel handles the norm/neox and the multi-section rope modes, not the vision one
     const int mode = ((const int32_t *) rope->op_params)[2];
-    if (mode != GGML_ROPE_TYPE_NORMAL && mode != GGML_ROPE_TYPE_NEOX) {
+    if (mode != GGML_ROPE_TYPE_NORMAL && mode != GGML_ROPE_TYPE_NEOX &&
+        mode != GGML_ROPE_TYPE_MROPE  && mode != GGML_ROPE_TYPE_IMROPE) {
         return false;
     }
 
@@ -4607,6 +4610,54 @@ static bool ggml_cuda_match_sigmoid_gate_add(
     return !overlaps(gate, dst);
 }
 
+// mul_mat with one F32 weight row -> the chain of ggml_cuda_match_sigmoid_gate_add: the tail kernel computes the gate
+static bool ggml_cuda_match_dot_sigmoid_gate_add(
+        const ggml_cgraph * cgraph, int node_idx,
+        const ggml_tensor *& shexp, const ggml_tensor *& moe, const ggml_tensor *& res) {
+    const ggml_tensor * mm = cgraph->nodes[node_idx];
+    if (mm->op != GGML_OP_MUL_MAT || node_idx + 4 >= cgraph->n_nodes) {
+        return false;
+    }
+
+    const int cc        = ggml_cuda_info().devices[ggml_cuda_get_device()].cc;
+    const int warp_size = ggml_cuda_info().devices[ggml_cuda_get_device()].warp_size;
+    if (!GGML_CUDA_CC_IS_RDNA3_0(cc)) {
+        return false;
+    }
+
+    const int output_idx = node_idx + 4;
+    if (!ggml_can_fuse_subgraph(cgraph, node_idx,
+            { GGML_OP_MUL_MAT, GGML_OP_UNARY, GGML_OP_MUL, GGML_OP_ADD, GGML_OP_ADD }, { output_idx })) {
+        return false;
+    }
+
+    const ggml_tensor * gate;
+    if (!ggml_cuda_match_sigmoid_gate_add(cgraph, node_idx + 1, gate, shexp, moe, res) || gate != mm) {
+        return false;
+    }
+
+    const ggml_tensor * w   = mm->src[0];
+    const ggml_tensor * x   = mm->src[1];
+    const ggml_tensor * dst = cgraph->nodes[output_idx];
+
+    // only where the mul_mat would run in mul_mat_vec_f, the kernel sums the dot product in its order
+    if (w->type != GGML_TYPE_F32 || x->type != GGML_TYPE_F32 || mm->type != GGML_TYPE_F32 ||
+            w->ne[0] != x->ne[0] || w->ne[1] != 1 || w->ne[2] != 1 || w->ne[3] != 1 || !ggml_is_contiguous(w) ||
+            x->ne[1] != dst->ne[1] || x->ne[2] != 1 || x->ne[3] != 1 || x->nb[0] != sizeof(float) ||
+            x->nb[1] % (2*sizeof(float)) != 0 || !ggml_cuda_is_aligned(x, 2*sizeof(float)) ||
+            ggml_prec_get_acc(mm) != GGML_PREC_UNDEFINED || !ggml_cuda_should_use_mmvf(w, cc, warp_size, x->ne[1])) {
+        return false;
+    }
+
+    // every block reads w and all of its x row while other blocks write
+    auto overlaps = [](const ggml_tensor * a, const ggml_tensor * b) {
+        const char * a0 = (const char *) a->data;
+        const char * b0 = (const char *) b->data;
+        return a0 < b0 + ggml_nbytes(b) && b0 < a0 + ggml_nbytes(a);
+    };
+    return !overlaps(w, dst) && !overlaps(x, dst);
+}
+
 // try and fuse nodes and return the number of nodes to skip
 // returns the number of nodes after node i taken by a fused row L2 clip, 0 if the nodes at i do not form one
 static int ggml_cuda_try_fuse_clip_rows(ggml_backend_cuda_context * cuda_ctx, ggml_cgraph * cgraph, int i) {
@@ -5527,16 +5578,34 @@ static int ggml_cuda_try_fuse(ggml_backend_cuda_context * cuda_ctx, ggml_cgraph 
         return fused_node_count - 1;
     }
 
+    {
+        const ggml_tensor * shexp;
+        const ggml_tensor * moe;
+        const ggml_tensor * res;
+        if (ggml_cuda_match_dot_sigmoid_gate_add(cgraph, i, shexp, moe, res)) {
+            ggml_cuda_op_dot_sigmoid_gate_add(*cuda_ctx, node->src[0], node->src[1], shexp, moe, res, cgraph->nodes[i + 4]);
+            return 4;
+        }
+    }
+
     // mul_mat + unary (sigmoid), or mul_mat + add + unary (softplus) + mul
     if (node->op == GGML_OP_MUL_MAT) {
-        for (const bool softplus : { false, true }) {
+        struct mm_unary_group {
+            int                           n_ops;
+            ggml_tensor *                 out;
+            bool                          use_mmvf;
+            ggml_cuda_mm_fusion_args_host fusion;
+        };
+
+        const auto match_group = [&](const int i, const bool softplus, mm_unary_group & g) -> bool {
+            ggml_tensor * node = cgraph->nodes[i];
             const int n_ops = softplus ? 4 : 2;
             const ggml_op ops[] = { GGML_OP_MUL_MAT, softplus ? GGML_OP_ADD : GGML_OP_UNARY, GGML_OP_UNARY, GGML_OP_MUL };
             const int out_nodes[] = { i + n_ops - 1 };
 
             if (!ggml_can_fuse_subgraph(cgraph, i, n_ops, ops, out_nodes, 1) ||
                     !ggml_cuda_check_fusion_memory_ranges(cgraph, i, n_ops, out_nodes, 1)) {
-                continue;
+                return false;
             }
 
             const ggml_tensor * add_node   = softplus ? cgraph->nodes[i + 1] : nullptr;
@@ -5545,47 +5614,113 @@ static int ggml_cuda_try_fuse(ggml_backend_cuda_context * cuda_ctx, ggml_cgraph 
 
             if (ggml_get_unary_op(unary_node) != (softplus ? GGML_UNARY_OP_SOFTPLUS : GGML_UNARY_OP_SIGMOID) ||
                     out_node->type != GGML_TYPE_F32 || !ggml_are_same_shape(out_node, node)) {
-                continue;
+                return false;
             }
 
             const ggml_tensor * bias = nullptr;
             const ggml_tensor * mul  = nullptr;
             if (softplus) {
                 if (add_node->src[0] != node || unary_node->src[0] != add_node) {
-                    continue;
+                    return false;
                 }
                 bias = add_node->src[1];
                 mul  = unary_node == out_node->src[0] ? out_node->src[1] : out_node->src[0];
-                if (node->ne[2] != 1 || node->ne[3] != 1 || !ggml_are_same_shape(add_node->src[0], bias) || bias->type != GGML_TYPE_F32 || !ggml_is_contiguous(bias) ||
-                        !ggml_are_same_shape(out_node, mul) || mul->type != GGML_TYPE_F32 || !ggml_is_contiguous(mul) ||
+                // the bias and the factor hold one value per row, which is broadcast when there are several columns
+                const auto is_row = [&](const ggml_tensor * t) {
+                    return t->type == GGML_TYPE_F32 && ggml_is_contiguous(t) && t->ne[0] == node->ne[0] &&
+                           ggml_nelements(t) == node->ne[0];
+                };
+                if (node->ne[2] != 1 || node->ne[3] != 1 || !is_row(bias) || !is_row(mul) ||
                         (out_node->src[0] != unary_node && out_node->src[1] != unary_node)) {
-                    continue;
+                    return false;
                 }
             } else {
                 ggml_cuda_topk_moe_args topk_args;
                 // leave the router sigmoid to the top-k moe fusion
                 if (unary_node->src[0] != node || ggml_cuda_topk_moe_fusion(cgraph, i + 1, topk_args)) {
-                    continue;
+                    return false;
                 }
                 // a mul that reads the sigmoid is left to the unary + mul fusions
                 const ggml_tensor * next = i + 2 < cgraph->n_nodes ? cgraph->nodes[i + 2] : nullptr;
                 if (next && next->op == GGML_OP_MUL && (next->src[0] == unary_node || next->src[1] == unary_node)) {
-                    continue;
+                    return false;
                 }
             }
 
             // the fused kernel takes the output node, which carries no precision request
-            if (ggml_prec_get_acc(node) != GGML_PREC_UNDEFINED || !ggml_cuda_should_fuse_mul_mat_vec_f(node)) {
+            if (ggml_prec_get_acc(node) != GGML_PREC_UNDEFINED) {
+                return false;
+            }
+            const bool use_mmvf = ggml_cuda_should_fuse_mul_mat_vec_f(node, nullptr, true);
+            // the bias is passed as a row here, so that the layout check of the bias fusion does not apply
+            if (!use_mmvf && !ggml_cuda_should_fuse_mul_mat_vec_q(node, out_node)) {
+                return false;
+            }
+
+            g.n_ops            = n_ops;
+            g.out              = out_node;
+            g.use_mmvf         = use_mmvf;
+            g.fusion           = {};
+            g.fusion.x_bias    = bias;
+            g.fusion.unary_op  = ggml_get_unary_op(unary_node);
+            g.fusion.unary_mul = mul;
+            return true;
+        };
+
+        for (const bool softplus : { false, true }) {
+            mm_unary_group g0;
+            if (!match_group(i, softplus, g0)) {
                 continue;
             }
 
-            ggml_cuda_mm_fusion_args_host fusion_data{};
-            fusion_data.x_bias    = bias;
-            fusion_data.unary_op  = ggml_get_unary_op(unary_node);
-            fusion_data.unary_mul = mul;
+            // The other gate of a delta net layer: a second mul_mat of the same src1 with its own activation follows,
+            // behind the reshape of the first result. On RDNA3 both run in one launch if their weights are F32.
+            int j = i + g0.n_ops;
+            while (j < cgraph->n_nodes && cgraph->nodes[j]->op == GGML_OP_RESHAPE && cgraph->nodes[j]->src[0] == g0.out) {
+                j++;
+            }
+            mm_unary_group g1;
+            const int cc = ggml_cuda_info().devices[cuda_ctx->device].cc;
+            if (GGML_CUDA_CC_IS_RDNA3_0(cc) && g0.use_mmvf && j < cgraph->n_nodes &&
+                    cgraph->nodes[j]->op == GGML_OP_MUL_MAT && cgraph->nodes[j]->src[1] == node->src[1] &&
+                    (match_group(j, false, g1) || match_group(j, true, g1)) && g1.use_mmvf) {
+                const ggml_tensor * src1 = node->src[1];
+                const ggml_tensor * w0   = node->src[0];
+                const ggml_tensor * w1   = cgraph->nodes[j]->src[0];
 
-            ggml_cuda_mul_mat_vec_f(*cuda_ctx, node->src[0], node->src[1], nullptr, out_node, &fusion_data);
-            return n_ops - 1;
+                const auto is_2d = [](const ggml_tensor * t) {
+                    return t->ne[2] == 1 && t->ne[3] == 1;
+                };
+                const auto overlaps = [](const ggml_tensor * a, const ggml_tensor * b) {
+                    const char * a0 = (const char *) a->data;
+                    const char * b0 = (const char *) b->data;
+                    return a0 < b0 + ggml_nbytes(b) && b0 < a0 + ggml_nbytes(a);
+                };
+                // the blocks of one side read while the blocks of the other side write
+                const auto reads_overlap = [&](const ggml_tensor * out, const ggml_tensor * w, const mm_unary_group & g) {
+                    for (const ggml_tensor * t : { w, src1, g.fusion.x_bias, g.fusion.unary_mul }) {
+                        if (t && overlaps(out, t)) {
+                            return true;
+                        }
+                    }
+                    return false;
+                };
+
+                if (w0->type == GGML_TYPE_F32 && w1->type == GGML_TYPE_F32 && w0->ne[0] == w1->ne[0] &&
+                        is_2d(w0) && is_2d(w1) && is_2d(src1) && is_2d(g0.out) && is_2d(g1.out) &&
+                        ggml_is_contiguous(g0.out) && ggml_is_contiguous(g1.out) &&
+                        !overlaps(g0.out, g1.out) && !reads_overlap(g0.out, w1, g1) && !reads_overlap(g1.out, w0, g0)) {
+                    ggml_cuda_mul_mat_vec_f_pair(*cuda_ctx, src1, w0, g0.out, &g0.fusion, w1, g1.out, &g1.fusion);
+                    return j + g1.n_ops - 1 - i;
+                }
+            }
+
+            if (g0.use_mmvf) {
+                ggml_cuda_mul_mat_vec_f(*cuda_ctx, node->src[0], node->src[1], nullptr, g0.out, &g0.fusion);
+            } else {
+                ggml_cuda_mul_mat_vec_q(*cuda_ctx, node->src[0], node->src[1], nullptr, g0.out, &g0.fusion);
+            }
+            return g0.n_ops - 1;
         }
     }
 
@@ -5648,6 +5783,19 @@ static int ggml_cuda_try_fuse(ggml_backend_cuda_context * cuda_ctx, ggml_cgraph 
 
     if (fused_mul_mat_vec) {
         return fused_node_count - 1;
+    }
+
+    // concat of a conv state with the new input + the copy of the last columns back into the state
+    if (node->op == GGML_OP_CONCAT && i + 3 < cgraph->n_nodes) {
+        const ggml_op ops[]     = { GGML_OP_CONCAT, GGML_OP_VIEW, GGML_OP_VIEW, GGML_OP_CPY };
+        // the view of the state cells is listed as an output: its source is outside of the subgraph
+        const int     outputs[] = { i, i + 2, i + 3 };
+        if (ggml_can_fuse_subgraph(cgraph, i, 4, ops, outputs, 3) &&
+                cgraph->nodes[i + 3]->src[1] == cgraph->nodes[i + 2] &&
+                ggml_cuda_can_concat_store(node, cgraph->nodes[i + 1], cgraph->nodes[i + 3])) {
+            ggml_cuda_op_concat_store(*cuda_ctx, node, cgraph->nodes[i + 3]);
+            return 3;
+        }
     }
 
     if (ggml_cuda_can_fuse(cgraph, i, { GGML_OP_RMS_NORM, GGML_OP_MUL, GGML_OP_ROPE, GGML_OP_VIEW, GGML_OP_SET_ROWS }, {})) {

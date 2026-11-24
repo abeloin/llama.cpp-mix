@@ -46,6 +46,14 @@
 - pin: llama : one MoE cache entry per expert weight for looped layers (unslothai/llama.cpp#421, commit b336a7e65) — couche 2, liste A approuvée par mesure (banc r5 : Inkling tg +16,6 % pour l'ensemble des 7 pins).
 - pin: CUDA: fuse the row L2 clip chain (unslothai/llama.cpp#401, commit 6c0e84ddf) — couche 2, liste A approuvée par mesure (banc r5 : Inkling tg +16,6 % pour l'ensemble des 7 pins) ; cas de test du pin non repris (conflit tests seul).
 - pin: CUDA: fuse the depth mix (stack concat, scores, softmax, mix) into one kernel (unslothai/llama.cpp#414, commit f766457c8) — couche 2, liste A approuvée par mesure (banc r5 : Inkling tg +16,6 % pour l'ensemble des 7 pins) ; cas de test du pin non repris (conflit tests seul).
+- rdna3: sélection r3, 12 commits (rafasmour/llama.cpp-RDNA3, master, PR du fork
+  #47 #61 #71 #73 #75 #77 #81 #85 #87 #94 #96 #98), cherry-pick -x, auteur
+  conservé ; #43 (cefeb9b41) vide ici, son changement est déjà présent.
+  #61 et #75 sont des ports de PR amont ouvertes (ggml-org #31746, #31761,
+  ravel7524). #73 et #98 : cas de test non repris (conflit tests seul).
+  #77 corrige l'issue amont #30175 (prefill FA non déterministe sur RDNA3).
+  Mesures : banc r6 (Gemma4 tg +12,7 %, prefill +9,8 % ; Qwen3.6 +8,3 % ;
+  Inkling +1,7 %) et r8 (ensemble).
 
 ## Conflits
 
