@@ -114,7 +114,7 @@ Référence (ROCm, RDNA3) :
 
 ```bash
 cmake -B build -DGGML_HIP=ON -DAMDGPU_TARGETS=<gfx####> \
-      -DLLAMA_SERVER=ON -DCMAKE_BUILD_TYPE=Release
+      -DCMAKE_BUILD_TYPE=Release
 cmake --build build --target llama-server -j
 ```
 
