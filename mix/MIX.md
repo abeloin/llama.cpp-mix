@@ -25,16 +25,14 @@ ne coexisteront jamais dans un même binaire.
 
 ## Défauts connus
 
-- mix-b12670-r1 (`e9207edb3`, consigné le 2026-11-23 au soir) :
-  « arrêt silencieux : breakdown jamais imprimé côté candidat
-  (×2 + idle), VRAM libérée, pas de fuite, pas de crash noyau, voie
-  byte-identique → comportemental, origine inconnue : merge ou
-  couche (question rafasmour : posée puis retirée par le
-  propriétaire dans la même soirée — issue #137 du dépôt RDNA3,
-  refermée, retrait consigné par lui) ». Dossier du côté notes :
-  verdict r1 § Défaillance + PROGRESS (méthodo de reprise a-b-c).
-  Le témoin b12670 imprime systématiquement le breakdown (0,3 s
-  après « cleaning up before exit… »).
+- (aucun)
+- LEVÉ le 2026-11-24 — mix-b12670-r1 (`e9207edb3`), « arrêt
+  silencieux : breakdown jamais imprimé côté candidat » : artefact de
+  harnais, pas un défaut du mix. run-banc.sh tuait le serveur sans
+  l'attendre ; l'orphelin était coupé en plein teardown (log async).
+  Avec le trap corrigé (wait + exit consigné), banc r2 du 2026-11-24 :
+  exit=0 et breakdown imprimé des deux côtés. Côté notes :
+  mesures/2026.md (ligne 2026-11-24).
 
 ## Limitations connues
 
