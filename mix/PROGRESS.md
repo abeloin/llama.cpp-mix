@@ -11,8 +11,8 @@ Règles : mix/AGENTS.md fait foi pour toute action.
 - [ ] Couche 2 unsloth — jamais posée (étape 4 du brief fondateur) :
       lister les PR unsloth utiles (numéro, SHA, description, retenu
       ou écarté) et la soumettre au propriétaire AVANT tout merge ;
-      le conflit biais relatif FA (pins unsloth vs #32740 amont) est
-      un arbitrage du propriétaire, jamais de l'agent. Puis banc de
+      pins unsloth du biais relatif FA (#385/#386/#413) EXCLUS par le
+      propriétaire (2026-11-24, MIX.md § Conflits). Puis banc de
       la couche 2 : couple témoin/candidat défini avec le propriétaire
       AVANT de lancer (base + pins sans RDNA3 ? mix complet vs couche 1 ?).
 - [ ] Cycle amont : au prochain tag b#### utile — rejouer les couches

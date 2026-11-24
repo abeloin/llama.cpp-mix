@@ -16,12 +16,20 @@
 
 ## Conflits
 
-Néant en cours. Reporté (arbitrage propriétaire au moment voulu,
-jamais seul — AGENTS § Conflits) : la base b12670 transporte
-upstream #32740 (compact bias FLASH_ATTN_EXT) en natif, concurrent
-des pins unsloth #385/#386 (biais relatif FA), ABSENTS du mix ; une
-future couche pins unsloth devra arbitrer les deux routes — elles
-ne coexisteront jamais dans un même binaire.
+Néant en cours.
+
+- TRANCHÉ le 2026-11-24 par le propriétaire — biais relatif FA : la
+  lignée native (upstream #32740, biais indexé sur FLASH_ATTN_EXT, déjà
+  dans la base b12670) l'emporte ; les pins unsloth du biais relatif
+  (#385 chunking, #386 FLASH_ATTN_EXT_BANDED, #413 lecture du biais
+  dans le kernel vec) sont EXCLUS de la couche 2. Motifs : #386 étend
+  l'op banded de l'Inkling 1 de juillet (ggml-org#25731, ouvert depuis
+  le 2026-07-15, op absent de l'amont) — voie parallèle au design
+  retenu par l'amont ; #385 redondant avec ggml-org#32883 (même idée,
+  plus général) ; #413 inopérant en prod (K/V q5_0 ; utile seulement
+  en f16, et sans objet une fois le biais indexé adopté). La couche 2
+  peut prendre d'autres pins unsloth, hors biais relatif. Détails :
+  llama-mix-notes, banc/notes/inkling-fast-validation-externe-2026-11-24.md.
 
 ## Défauts connus
 
