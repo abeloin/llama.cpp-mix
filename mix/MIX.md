@@ -40,6 +40,7 @@
   au CPU n'a donc pas de backend ; sans effet tant que tout tient au GPU.
   RETRAIT : dès qu'une PR CUDA/HIP du biais indexé entre dans la base amont.
 - pin: CUDA: pack several short rows per block in mul_mat_vec_f (unslothai/llama.cpp#400, commit a5667a9c0) — couche 2, liste A approuvée par mesure (banc r5 : Inkling tg +16,6 % pour l'ensemble des 7 pins).
+- pin: CUDA: fuse the SiTU gate of the MoE experts (unslothai/llama.cpp#402, commit 0bfd204bd) — couche 2, liste A approuvée par mesure (banc r5 : Inkling tg +16,6 % pour l'ensemble des 7 pins).
 
 ## Conflits
 
