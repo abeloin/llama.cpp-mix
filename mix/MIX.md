@@ -13,7 +13,10 @@
 
 - rdna3: 15 fusions kernel (rafasmour/llama.cpp-RDNA3,
   rdna3-integration @ d0b250594), posée sur b12292.
-- pr: chunking des requêtes de l'attention Inkling 2 (ggml-org/llama.cpp#32883,
+- RETIRÉ (2026-11-24, intégration r3) — remplacé par le biais indexé GPU, mesuré
+  meilleur (bancs r4, r7 : prefill Inkling +61 % vs #32883, compute 774 vs
+  1051 MiB). Ancienne ligne :
+  pr: chunking des requêtes de l'attention Inkling 2 (ggml-org/llama.cpp#32883,
   commit ebc0f114a, 3 commits de sanmai, importés verbatim), posé le
   2026-11-24 sur la base b12670. Premier calque de type « pr » : PR
   amont OUVERTE, non fusionnée, importée sur décision du propriétaire
