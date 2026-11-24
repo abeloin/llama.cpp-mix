@@ -26,9 +26,7 @@ Règles : mix/AGENTS.md fait foi pour toute action.
   liste de PR à approuver, ci-dessus).
 
 ## Dernière synchronisation
-2026-11-24 — fichier déplacé de la racine vers mix/ (brief fondateur :
-aucun fichier hors mix/ sauf amont). Banc Inkling-2 débloqué par le
-cycle b12670 puis réceptionné côté notes (r1 indicatif ; r2 : arrêt
-silencieux levé, artefact de harnais — mesures/2026.md). master
-synchronisé sur upstream (4af4bb6d8) et protégé côté GitHub (force
-push et suppression refusés, admins inclus).
+2026-11-24, ~4 h 40 — calque pr ggml-org#32883 posé (chunking de
+l'attention Inkling 2) après banc r3 [bon] : Inkling prod 49/49 couches
+GPU, tg ×4,3. Tag de gouvernance mix-b12670-r2. Pins unsloth du biais
+relatif exclus de la couche 2 (MIX.md § Conflits).

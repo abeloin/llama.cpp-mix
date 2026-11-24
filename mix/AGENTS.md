@@ -60,7 +60,10 @@ journal.
   merges `--no-ff` au-dessus du tag amont.
 - **Chaque commit garde sa provenance** dans son message :
   `pin: <description> (unslothai/llama.cpp#NNN, commit SHORTHASH)` ou
-  `rdna3: <description> (rafasmour/llama.cpp-RDNA3, commit SHORTHASH)`.
+  `rdna3: <description> (rafasmour/llama.cpp-RDNA3, commit SHORTHASH)` ou
+  `pr: <description> (ggml-org/llama.cpp#NNNNN, commit SHORTHASH)` pour
+  une PR amont non fusionnée (type de couche accepté par le propriétaire
+  le 2026-11-24 ; retrait dès l'entrée dans la base amont).
 - **Aucun commit/push vers les dépôts amont** sans instruction explicite.
 - **Pas de réécriture de code importé** : les pins entrent verbatim ; si un
   conflit oblige une adaptation, le diff reste minimal et signalé dans le

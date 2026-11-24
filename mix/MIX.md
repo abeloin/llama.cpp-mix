@@ -13,6 +13,18 @@
 
 - rdna3: 15 fusions kernel (rafasmour/llama.cpp-RDNA3,
   rdna3-integration @ d0b250594), posée sur b12292.
+- pr: chunking des requêtes de l'attention Inkling 2 (ggml-org/llama.cpp#32883,
+  commit ebc0f114a, 3 commits de sanmai, importés verbatim), posé le
+  2026-11-24 sur la base b12670. Premier calque de type « pr » : PR
+  amont OUVERTE, non fusionnée, importée sur décision du propriétaire
+  (2026-11-24) pour son effet mesuré — banc r3 [bon] : Inkling prod
+  1/49 → 49/49 couches GPU, tg 5,10 → 21,86 tok/s, prefill +73 %
+  (llama-mix-notes, mesures/2026.md). Build gate : le banc a tourné sur
+  un arbre de code identique (461b341e0). RETRAIT : à rejouer au
+  prochain cycle tant que la PR est ouverte ; à retirer dès qu'elle
+  (ou un équivalent) entre dans la base amont ; à réviser si la PR
+  évolue (prototype selon son auteur ; ubatch 1024/2048 suspects dans
+  ses propres tests, notre profil prod est en -ub 256).
 
 ## Conflits
 
