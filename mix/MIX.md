@@ -64,6 +64,7 @@
 - tests: cas de test de #401, #414, rafasmour #73 et #98 réintégrés
   verbatim (même merge) — les mentions « cas de test non repris » ci-dessus
   sont closes.
+- pin: CUDA: add IQ1_M to MMQ (unslothai/llama.cpp#304, commit e4e1eba07) — couche 2, set B : seul pin retenu (approuvé le 2026-11-24 ; #264 et #251 écartés, #405 DSpark mis de côté). Banc r12 : Qwen3.6-35B-A3B UD-IQ1_M prefill +41 % (1388 → 1954 tok/s), tg inchangé ; test-backend-ops 21766/21766 (merge 45d2f8a84).
 
 ## Conflits
 
