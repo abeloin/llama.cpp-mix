@@ -65,11 +65,16 @@ journal.
 - **Pas de réécriture de code importé** : les pins entrent verbatim ; si un
   conflit oblige une adaptation, le diff reste minimal et signalé dans le
   message de merge.
-- **Aucune communication externe autre que les opérations git vers
-  `origin`** : pas d'issue, de PR, de commentaire ou de message vers un
-  dépôt amont ou un tiers, par quelque canal que ce soit (CLI, web,
-  API). Une question à un auteur amont se pose au propriétaire, jamais
-  envoyée par l'agent.
+- **Aucune communication externe autre que les opérations git** (push
+  vers `origin` seulement ; fetch des remotes en lecture) : pas d'issue,
+  de PR, de commentaire ou de message vers un dépôt amont ou un tiers,
+  par quelque canal que ce soit (CLI, web, API). Seule exception, en
+  LECTURE et sans effet visible par un tiers : `gh pr list/view/diff`,
+  `gh search prs/issues`, `gh issue list/view`, `gh release list/view`,
+  `gh run list/view`, `gh repo view`, et `gh api` en GET uniquement
+  (jamais `-X`, `--method`, `-f`, `-F`, `--field`, `--raw-field`,
+  `--input`). Une question à un auteur amont se pose au propriétaire,
+  jamais envoyée par l'agent.
 
 ## Conflits pin/upstream — LA règle de vigilance
 
