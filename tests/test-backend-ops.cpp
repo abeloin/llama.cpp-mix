@@ -4743,6 +4743,127 @@ struct test_add_unary_mul : public test_case {
     }
 };
 
+// depth mix fusion (Inkling 2 attention residuals): normalize cur, append it to the block stacks, softmax over
+// the scores of nq queries, mix the stack rows; extra_use keeps the intermediates alive outside the chain
+struct test_depth_mix_fuse : public test_case {
+    const int64_t ncols;
+    const int64_t n;   // stack rows including cur
+    const int64_t nq;
+    const int64_t T;
+    const bool extra_use;
+    const bool plain; // the transposed rows as a CONT of the permuted plain rows instead of their own CONCAT
+    const int prev_offs; // earlier rows as an F32 view at this float offset, with an odd row stride when > 0
+
+    std::string op_desc(ggml_tensor * t) override {
+        GGML_UNUSED(t);
+        return "DEPTH_MIX_FUSE";
+    }
+
+    bool run_whole_graph() override { return true; }
+
+    // 4 queries run the first product as a cuBLAS GEMM on Ampere+, a little above the default 1e-7 at times
+    double max_nmse_err() override { return 1e-6; }
+
+    std::string vars() override {
+        return VARS_TO_STR7(ncols, n, nq, T, extra_use, plain, prev_offs);
+    }
+
+    test_depth_mix_fuse(int64_t ncols = 2304, int64_t n = 8, int64_t nq = 1, int64_t T = 1, bool extra_use = false, bool plain = false,
+            int prev_offs = 0)
+        : ncols(ncols), n(n), nq(nq), T(T), extra_use(extra_use), plain(plain), prev_offs(prev_offs) {}
+
+    ggml_tensor * build_graph(ggml_context * ctx) override {
+        ggml_tensor * cur    = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, ncols, 1, T);
+        ggml_tensor * prev   = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, ncols, n - 1, T);
+        if (prev_offs > 0) {
+            const int64_t row = ncols + 1;
+            ggml_tensor * base = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, prev_offs + row*(n - 1)*T);
+            ggml_set_name(base, "prev_base");
+            prev = ggml_view_3d(ctx, base, ncols, n - 1, T, row*sizeof(float), row*(n - 1)*sizeof(float), prev_offs*sizeof(float));
+        }
+        ggml_tensor * prev_t = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, n - 1, ncols, T);
+        ggml_tensor * q      = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, ncols, nq);
+        ggml_set_name(cur, "cur");
+        ggml_set_name(prev, "prev");
+        ggml_set_name(prev_t, "prev_t");
+        ggml_set_name(q, "q");
+
+        ggml_tensor * normed   = ggml_rms_norm(ctx, cur, 1e-6f);
+        ggml_tensor * normed_t = ggml_reshape_3d(ctx, normed, 1, ncols, T);
+        ggml_tensor * states   = ggml_concat(ctx, prev,   normed,   1);
+        ggml_tensor * states_t = plain ? ggml_cont(ctx, ggml_permute(ctx, states, 1, 0, 2, 3)) : ggml_concat(ctx, prev_t, normed_t, 0);
+
+        ggml_tensor * queries = T == 1 ? q : ggml_repeat(ctx, q, ggml_new_tensor_3d(ctx, GGML_TYPE_F32, ncols, nq, T));
+        ggml_tensor * scores  = ggml_mul_mat(ctx, states, queries);
+        scores = ggml_soft_max_ext(ctx, scores, nullptr, 1.0f/sqrtf(ncols), 0.0f);
+
+        ggml_tensor * out = ggml_mul_mat(ctx, states_t, scores);
+        if (extra_use) {
+            out = ggml_concat(ctx, ggml_reshape_1d(ctx, out, ggml_nelements(out)), ggml_reshape_1d(ctx, states, ggml_nelements(states)), 0);
+            out = ggml_concat(ctx, out, ggml_reshape_1d(ctx, states_t, ggml_nelements(states_t)), 0);
+            out = ggml_concat(ctx, out, ggml_reshape_1d(ctx, normed, ggml_nelements(normed)), 0);
+        }
+        ggml_set_name(out, "out");
+        return out;
+    }
+};
+
+// Row L2 clip fusion (Inkling 2 q/k/r clip): y = c*clamp(t/(sqrt(sum(c^2)) + eps), 0, 1), c = x (* w)
+// CUDA matches the chain [mul,] sqr, sum_rows, sqrt, scale, [fill,] div, clamp, mul
+struct test_clip_rows_fuse : public test_case {
+    const std::array<int64_t, 4> ne; // [D, H, T, 1]
+    const bool with_w;
+    const bool shared_limit; // threshold tensor filled outside the chain
+    const bool inplace_fill; // ggml_fill_inplace on the norm: overwrites the denominator, must not fuse
+    const bool inplace_sqr;  // ggml_sqr_inplace on c: overwrites the input of the final mul, must not fuse
+    const bool limit_is_c;   // the limit is c = x*w itself (one column), an intermediate of the chain: must not fuse
+
+    std::string op_desc(ggml_tensor * t) override {
+        GGML_UNUSED(t);
+        return "CLIP_ROWS_FUSE";
+    }
+
+    bool run_whole_graph() override { return true; }
+
+    std::string vars() override {
+        return VARS_TO_STR6(ne, with_w, shared_limit, inplace_fill, inplace_sqr, limit_is_c);
+    }
+
+    test_clip_rows_fuse(std::array<int64_t, 4> ne = {128, 24, 7, 1}, bool with_w = true, bool shared_limit = false,
+                        bool inplace_fill = false, bool inplace_sqr = false, bool limit_is_c = false)
+        : ne(ne), with_w(with_w), shared_limit(shared_limit), inplace_fill(inplace_fill), inplace_sqr(inplace_sqr),
+          limit_is_c(limit_is_c) {}
+
+    ggml_tensor * build_graph(ggml_context * ctx) override {
+        ggml_tensor * x = ggml_new_tensor_4d(ctx, GGML_TYPE_F32, ne[0], ne[1], ne[2], ne[3]);
+        ggml_set_name(x, "x");
+
+        ggml_tensor * limit = nullptr;
+        if (shared_limit) {
+            limit = ggml_fill(ctx, ggml_new_tensor_4d(ctx, GGML_TYPE_F32, 1, ne[1], ne[2], ne[3]), 1.5f);
+        }
+
+        ggml_tensor * c = x;
+        if (with_w) {
+            ggml_tensor * w = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, ne[0], ne[1]);
+            ggml_set_name(w, "w");
+            c = ggml_mul(ctx, x, w);
+        }
+        ggml_tensor * norm = ggml_sqrt(ctx, ggml_sum_rows(ctx, inplace_sqr ? ggml_sqr_inplace(ctx, c) : ggml_sqr(ctx, c)));
+        norm = ggml_scale_bias(ctx, norm, 1.0f, 1e-6f);
+        if (limit_is_c) {
+            limit = c;
+        }
+        if (!limit) {
+            limit = inplace_fill ? ggml_fill_inplace(ctx, norm, 1.5f) : ggml_fill(ctx, norm, 1.5f);
+        }
+        ggml_tensor * factor = ggml_div(ctx, limit, norm);
+        ggml_tensor * out = ggml_mul(ctx, c, ggml_clamp(ctx, factor, 0.0f, 1.0f));
+        ggml_set_name(out, "out");
+        return out;
+    }
+};
+
 // GGML_OP_UNARY(SIGMOID) + MUL + ADD + ADD with the sigmoid gate broadcast over dim 0:
 // the shared expert tail of the MoE FFN, moe_out + shexp * sigmoid(gate) + residual.
 struct test_shared_expert_tail : public test_case {
@@ -8836,6 +8957,53 @@ struct test_mul_mat_gate : public test_case {
     }
 };
 
+// both gates of a gated delta net layer from one input: mul_mat + add + softplus + mul and mul_mat + sigmoid
+struct test_mul_mat_gate_pair : public test_case {
+    const ggml_type type_a;
+    const int64_t m;
+    const int64_t n;
+    const int64_t k;
+    const bool beta_first; // order of the two gates in the graph
+
+    test_mul_mat_gate_pair(ggml_type type_a, int64_t m, int64_t n, int64_t k, bool beta_first)
+        : type_a(type_a), m(m), n(n), k(k), beta_first(beta_first) {}
+
+    std::string vars() override {
+        return VARS_TO_STR5(type_a, m, n, k, beta_first);
+    }
+
+    std::string op_desc(ggml_tensor * t) override {
+        GGML_UNUSED(t);
+        return "MUL_MAT_GATE_PAIR";
+    }
+
+    bool run_whole_graph() override { return true; }
+
+    double max_nmse_err() override {
+        return 5e-4;
+    }
+
+    ggml_tensor * build_graph(ggml_context * ctx) override {
+        ggml_tensor * b  = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, k, n);
+        ggml_tensor * wa = ggml_new_tensor_2d(ctx, type_a,        k, m);
+        ggml_tensor * wb = ggml_new_tensor_2d(ctx, type_a,        k, m);
+        ggml_tensor * dt = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, m);
+        ggml_tensor * sa = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, m);
+
+        ggml_tensor * alpha = ggml_mul(ctx, ggml_softplus(ctx, ggml_add(ctx, ggml_mul_mat(ctx, wa, b), dt)), sa);
+        alpha = ggml_reshape_4d(ctx, alpha, 1, m, n, 1);
+
+        ggml_tensor * beta = ggml_sigmoid(ctx, ggml_mul_mat(ctx, wb, b));
+        beta = ggml_reshape_4d(ctx, beta, 1, m, n, 1);
+
+        // the first operand is expanded first
+        ggml_tensor * out = beta_first ? ggml_add(ctx, beta, alpha) : ggml_add(ctx, alpha, beta);
+        ggml_set_name(out, "out");
+
+        return out;
+    }
+};
+
 // mul_mat followed by an add of a residual, which backends may fuse into the mat-mul
 struct test_mul_mat_add : public test_case {
     const ggml_type type_a;
@@ -11515,6 +11683,55 @@ static const ggml_type other_types[] = {
 #pragma optimize("", off)
 #endif
 
+// The conv state of a recurrent layer: the new input is appended to the state columns (concat along dim 0)
+// and the last columns of the result are copied back into the state, which backends may do in one pass.
+struct test_concat_state_store : public test_case {
+    const int64_t n_state;  // state columns per channel
+    const int64_t n_tokens;
+    const int64_t n_channels;
+    const int64_t n_seqs;
+
+    test_concat_state_store(int64_t n_state, int64_t n_tokens, int64_t n_channels, int64_t n_seqs)
+        : n_state(n_state), n_tokens(n_tokens), n_channels(n_channels), n_seqs(n_seqs) {}
+
+    std::string vars() override {
+        return VARS_TO_STR4(n_state, n_tokens, n_channels, n_seqs);
+    }
+
+    std::string op_desc(ggml_tensor * t) override {
+        GGML_UNUSED(t);
+        return "CONCAT_STATE_STORE";
+    }
+
+    bool run_whole_graph() override { return true; }
+
+    ggml_tensor * build_graph(ggml_context * ctx) override {
+        // the state cells of all sequences, with one unused cell in front
+        ggml_tensor * cells = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, n_state * n_channels, n_seqs + 1);
+        ggml_set_name(cells, "cells");
+        ggml_tensor * x = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, n_channels, n_tokens, n_seqs);
+        ggml_set_name(x, "x");
+
+        ggml_tensor * state = ggml_view_2d(ctx, cells, n_state * n_channels, n_seqs, cells->nb[1], cells->nb[1]);
+        state = ggml_reshape_3d(ctx, state, n_state, n_channels, n_seqs);
+
+        ggml_tensor * xt = ggml_permute(ctx, x, 1, 0, 2, 3); // [n_tokens, n_channels, n_seqs]
+
+        ggml_tensor * conv_x = ggml_concat(ctx, state, xt, 0);
+
+        ggml_tensor * last = ggml_view_3d(ctx, conv_x, n_state, n_channels, n_seqs,
+                conv_x->nb[1], conv_x->nb[2], ggml_row_size(conv_x->type, n_tokens));
+        ggml_tensor * cell = ggml_view_2d(ctx, cells, n_state * n_channels, n_seqs, cells->nb[1], cells->nb[1]);
+        ggml_tensor * stored = ggml_cpy(ctx, last, cell);
+
+        // the result holds the concatenated input and the new state
+        ggml_tensor * out = ggml_concat(ctx, conv_x, ggml_reshape_3d(ctx, stored, n_state, n_channels, n_seqs), 0);
+        ggml_set_name(out, "out");
+
+        return out;
+    }
+};
+
 // Test cases for evaluation: should try to cover edge cases while using small input sizes to keep the runtime low
 static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
     std::vector<std::unique_ptr<test_case>> test_cases;
@@ -11586,6 +11803,22 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
     // a unary op with no fused kernel must fall back to the three-op chain
     test_cases.emplace_back(new test_add_unary_mul(GGML_UNARY_OP_GELU, GGML_TYPE_F32, { 32, 7, 1, 1 }));
 
+    // row L2 clip fusion: short and long rows, decode (few rows) and prefill (many rows) block sizes
+    for (bool with_w : { true, false }) {
+        for (bool shared_limit : { false, true }) {
+            test_cases.emplace_back(new test_clip_rows_fuse({ 128,  24,   1, 1}, with_w, shared_limit));
+            test_cases.emplace_back(new test_clip_rows_fuse({ 128,   8, 512, 1}, with_w, shared_limit));
+            test_cases.emplace_back(new test_clip_rows_fuse({  16,  24,  33, 1}, with_w, shared_limit));
+            test_cases.emplace_back(new test_clip_rows_fuse({1100,   3,   5, 1}, with_w, shared_limit));
+        }
+        // an in-place fill of the norm overwrites the denominator: the chain must run unfused
+        test_cases.emplace_back(new test_clip_rows_fuse({ 128,  24,   7, 1}, with_w, false, true));
+        // an in-place sqr of c overwrites the input of the final mul: the chain must run unfused
+        test_cases.emplace_back(new test_clip_rows_fuse({ 128,  24,   7, 1}, with_w, false, false, true));
+    }
+    // a one-column limit that is c = x*w itself is an intermediate of the chain: the chain must run unfused
+    test_cases.emplace_back(new test_clip_rows_fuse({   1,  24,   7, 1}, true, false, false, false, true));
+
     // fused sigmoid gate + mul + add + add: shared expert tail of the MoE FFN
     for (std::array<int64_t, 2> ne : { std::array<int64_t, 2>{ 2048, 1 }, { 2048, 7 }, { 33, 5 } }) {
         test_cases.emplace_back(new test_shared_expert_tail(ne));
@@ -11609,6 +11842,41 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
         test_cases.emplace_back(new test_snake_fuse(type, {  64,  32, 2, 1}));   // ne[2] > 1
         test_cases.emplace_back(new test_snake_fuse(type, {  64,  32, 1, 2}));   // ne[3] > 1
         test_cases.emplace_back(new test_snake_fuse(type, {  64,  32, 2, 3}));   // ne[2] > 1 and ne[3] > 1
+    }
+
+    // depth mix fusion: decode (1-8 tokens) and prefill rows, odd stacks (second product not MMVF), 1/3/4 queries
+    // (4: the first product is not MMVF on Ampere+), row lengths for every rms_norm launch and MMVF block size
+    for (int64_t T : { 1, 2, 3, 4, 8 }) {
+        for (int64_t n : { 2, 3, 6, 12, 19, 20, 32 }) {
+            test_cases.emplace_back(new test_depth_mix_fuse(2304, n, 1, T, false));
+        }
+        test_cases.emplace_back(new test_depth_mix_fuse(2304, 10, 3, T, false));
+        test_cases.emplace_back(new test_depth_mix_fuse(2304, 11, 3, T, false));
+        test_cases.emplace_back(new test_depth_mix_fuse(2304, 10, 4, T, false));
+        test_cases.emplace_back(new test_depth_mix_fuse(2304, 10, 1, T, true));
+        test_cases.emplace_back(new test_depth_mix_fuse(2304,  9, 3, T, true));
+    }
+    // the transposed rows as a copy of the plain ones (Inkling 2 graphs that drop the second stack)
+    for (int64_t T : { 1, 2, 3, 4, 8 }) {
+        for (int64_t n : { 2, 7, 8, 14, 20 }) {
+            test_cases.emplace_back(new test_depth_mix_fuse(2304, n, 1, T, false, true));
+        }
+        test_cases.emplace_back(new test_depth_mix_fuse(2304, 10, 3, T, false, true));
+        test_cases.emplace_back(new test_depth_mix_fuse(2304, 10, 1, T, true, true));
+    }
+    test_cases.emplace_back(new test_depth_mix_fuse(2304, 14, 1, 512, false, true));
+    test_cases.emplace_back(new test_depth_mix_fuse(2304, 13, 3, 77, true, true));
+    test_cases.emplace_back(new test_depth_mix_fuse(1002, 9, 1, 3, false, true));
+    test_cases.emplace_back(new test_depth_mix_fuse(2304, 14, 1, 512, false));
+    test_cases.emplace_back(new test_depth_mix_fuse(2304, 14, 3, 512, false));
+    test_cases.emplace_back(new test_depth_mix_fuse(2304, 13, 3, 77, true));
+    // earlier rows as a view at an odd float offset with an odd row stride: no float2 loads from it
+    test_cases.emplace_back(new test_depth_mix_fuse(2304, 8, 1, 1, false, false, 1));
+    test_cases.emplace_back(new test_depth_mix_fuse(1002, 9, 3, 77, false, true, 1));
+    for (int64_t ncols : { 130, 1000, 1002, 6000 }) {
+        test_cases.emplace_back(new test_depth_mix_fuse(ncols, 6, 1, 1, false));
+        test_cases.emplace_back(new test_depth_mix_fuse(ncols, 7, 3, 3, true));
+        test_cases.emplace_back(new test_depth_mix_fuse(ncols, 20, 3, 8, false));
     }
 
     // loop controller chain y = c -/+ tanh(a)*b: decode, batched decode, prefill
@@ -14789,6 +15057,26 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
         }
     }
 
+    // conv state of a recurrent layer: kernel sizes 2 to 15, one token and a few, one and several sequences,
+    // more tokens than state columns, and shapes the fused path does not take
+    for (int64_t n_state : {1, 3, 6, 14, 17}) {
+        for (int64_t n_tokens : {1, 2, 5, 8, 9}) {
+            for (int64_t n_seqs : {1, 3}) {
+                test_cases.emplace_back(new test_concat_state_store(n_state, n_tokens, 300, n_seqs));
+            }
+        }
+    }
+    test_cases.emplace_back(new test_concat_state_store(3, 1, 8192, 1));
+    test_cases.emplace_back(new test_concat_state_store(3, 1, 8192, 4));
+
+    // both gates from one input: F32 weights take one launch on RDNA3, the other types two
+    for (ggml_type type_a : {GGML_TYPE_F32, GGML_TYPE_F16}) {
+        for (int64_t n : {1, 4}) {
+            for (bool beta_first : {false, true}) {
+                test_cases.emplace_back(new test_mul_mat_gate_pair(type_a, 32, n, 2048, beta_first));
+            }
+        }
+    }
     return test_cases;
 }
 #ifdef _MSC_VER
