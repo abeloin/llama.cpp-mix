@@ -46,3 +46,14 @@ ne coexisteront jamais dans un même binaire.
   reconfigure avec le drapeau.
 - Serveur headless attendu : avertissement CMake « no assets
   available » normal, pas une erreur.
+
+## Dérogations (autorisées par le propriétaire)
+
+- 2026-11-24 — réécriture d'historique de mix/gfx1101, malgré « pas de
+  re-création d'historique » : courriel d'auteur erroné sur les 15
+  commits du propriétaire (faute de user.email local). Auteur et
+  committer seuls changés, arbres identiques octet pour octet ; les
+  30 commits rafasmour et la base amont sont inchangés ; tag
+  mix-b12670-r1 recréé sur le nouveau SHA (e9207edb3), push forcé avec
+  bail. Table ancien → nouveau SHA : llama-mix-notes,
+  banc/notes/remappage-sha-2026-11-24.md.
