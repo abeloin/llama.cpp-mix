@@ -21,7 +21,9 @@ Règles : mix/AGENTS.md fait foi pour toute action.
       (mix-b12670-r1).
 
 ## Blocages / questions ouvertes
-- (aucun)
+- Prochaine décision du propriétaire : banc qwen r1 recette-prod
+  (prêt, côté llama-mix-notes) OU couche 2 unsloth (commence par la
+  liste de PR à approuver, ci-dessus).
 
 ## Dernière synchronisation
 2026-11-24 — fichier déplacé de la racine vers mix/ (brief fondateur :
