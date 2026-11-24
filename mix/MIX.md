@@ -2,13 +2,12 @@
 
 ## Base
 
-- Courante : b12292 (af6b5243d), choix 2026-11-23.
-- Cycle en cours : b12670 (239242322), choix 2026-11-23 au soir —
-  dernier tag amont confirmé par ls-remote (ggml-org), porteuses
-  vérifiées par ancêtre : arch inkling2 5c008e000, fix experts host
-  5bacb7c, compact bias #32740 (= tête du tag). Merge --no-ff à
-  poser ; couple banc : vanilla b12670 vs mix-b12670-rN, recette
-  prod (FA_QUANTS=all, LTO, NATIVE, amdclang theRock).
+- Courante : b12670 (239242322), posée par merge --no-ff (ead929993)
+  le 2026-11-23 au soir — 378 commits amont, 3 conflits documentés au
+  message du merge. Historique : b12292 (af6b5243d), choix 2026-11-23.
+- Couple banc décidé par le propriétaire : vanilla b12670 vs
+  mix-b12670-rN (tag après build gate), recette prod (FA_QUANTS=all,
+  LTO, NATIVE, amdclang theRock).
 
 ## Couches
 
