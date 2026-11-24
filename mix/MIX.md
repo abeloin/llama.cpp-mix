@@ -43,6 +43,7 @@
 - pin: CUDA: fuse the SiTU gate of the MoE experts (unslothai/llama.cpp#402, commit 0bfd204bd) — couche 2, liste A approuvée par mesure (banc r5 : Inkling tg +16,6 % pour l'ensemble des 7 pins).
 - pin: CUDA: fuse the short convolution chain with its state store and residual (unslothai/llama.cpp#411, commit 7e633d60b) — couche 2, liste A approuvée par mesure (banc r5 : Inkling tg +16,6 % pour l'ensemble des 7 pins).
 - pin: CUDA: fuse tanh-mul-add/sub, router weight normalization and add + rms_norm chains (unslothai/llama.cpp#412, commit 874c88cad) — couche 2, liste A approuvée par mesure (banc r5 : Inkling tg +16,6 % pour l'ensemble des 7 pins).
+- pin: llama : one MoE cache entry per expert weight for looped layers (unslothai/llama.cpp#421, commit b336a7e65) — couche 2, liste A approuvée par mesure (banc r5 : Inkling tg +16,6 % pour l'ensemble des 7 pins).
 
 ## Conflits
 
