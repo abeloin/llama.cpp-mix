@@ -8,10 +8,10 @@ Règles : mix/AGENTS.md fait foi pour toute action.
 - [ ] Banc Inkling-2 de la couche 1 (réplication du verdict rdna3,
       exécuté depuis llama-mix-notes ; résultat attendu dans mesures/)
       — BLOQUÉ au boot : arch `inkling2` absente du couple v1
-      (af6b5243d vanilla comme 26c603c4b couche 1, et de mix/gfx1101 ;
+      (af6b5243d vanilla comme ab26b35fb couche 1, et de mix/gfx1101 ;
       arrivée en amont après b12292, premiers tags porteurs ~b12641).
       Échec consigné côté notes (verdict-2026-11-23-inkling-echec-arch.md,
-      d0a0466) ; redébloqué par le cycle amont ci-dessous, puis réception
+      c62cda6) ; redébloqué par le cycle amont ci-dessous, puis réception
       selon banc.md étapes 6-12
 
 ## À faire
@@ -25,7 +25,7 @@ Règles : mix/AGENTS.md fait foi pour toute action.
 
 ## Blocages / questions ouvertes
 - Arch `inkling2` absente du couple v1 — blocage du banc Inkling-2
-  (détails et preuves côté llama-mix-notes, d0a0466) ; se lève par le
+  (détails et preuves côté llama-mix-notes, c62cda6) ; se lève par le
   cycle amont ci-dessus
 
 ## Dernière synchronisation

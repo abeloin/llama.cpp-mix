@@ -2,7 +2,7 @@
 
 ## Base
 
-- Courante : b12670 (239242322), posée par merge --no-ff (ead929993)
+- Courante : b12670 (239242322), posée par merge --no-ff (0e4789e95)
   le 2026-11-23 au soir — 378 commits amont, 3 conflits documentés au
   message du merge. Historique : b12292 (af6b5243d), choix 2026-11-23.
 - Couple banc décidé par le propriétaire : vanilla b12670 vs
@@ -25,7 +25,7 @@ ne coexisteront jamais dans un même binaire.
 
 ## Défauts connus
 
-- mix-b12670-r1 (`5db315d62`, consigné le 2026-11-23 au soir) :
+- mix-b12670-r1 (`e9207edb3`, consigné le 2026-11-23 au soir) :
   « arrêt silencieux : breakdown jamais imprimé côté candidat
   (×2 + idle), VRAM libérée, pas de fuite, pas de crash noyau, voie
   byte-identique → comportemental, origine inconnue : merge ou
