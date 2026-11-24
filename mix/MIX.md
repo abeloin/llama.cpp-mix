@@ -29,7 +29,9 @@ ne coexisteront jamais dans un même binaire.
   « arrêt silencieux : breakdown jamais imprimé côté candidat
   (×2 + idle), VRAM libérée, pas de fuite, pas de crash noyau, voie
   byte-identique → comportemental, origine inconnue : merge ou
-  couche (question posée à rafasmour) ». Dossier du côté notes :
+  couche (question rafasmour : posée puis retirée par le
+  propriétaire dans la même soirée — issue #137 du dépôt RDNA3,
+  refermée, retrait consigné par lui) ». Dossier du côté notes :
   verdict r1 § Défaillance + PROGRESS (méthodo de reprise a-b-c).
   Le témoin b12670 imprime systématiquement le breakdown (0,3 s
   après « cleaning up before exit… »).
