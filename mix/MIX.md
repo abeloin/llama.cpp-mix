@@ -23,6 +23,17 @@ des pins unsloth #385/#386 (biais relatif FA), ABSENTS du mix ; une
 future couche pins unsloth devra arbitrer les deux routes — elles
 ne coexisteront jamais dans un même binaire.
 
+## Défauts connus
+
+- mix-b12670-r1 (`5db315d62`, consigné le 2026-11-23 au soir) :
+  « arrêt silencieux : breakdown jamais imprimé côté candidat
+  (×2 + idle), VRAM libérée, pas de fuite, pas de crash noyau, voie
+  byte-identique → comportemental, origine inconnue : merge ou
+  couche (question posée à rafasmour) ». Dossier du côté notes :
+  verdict r1 § Défaillance + PROGRESS (méthodo de reprise a-b-c).
+  Le témoin b12670 imprime systématiquement le breakdown (0,3 s
+  après « cleaning up before exit… »).
+
 ## Limitations connues
 
 - UI web désactivée au build (`-DLLAMA_USE_PREBUILT_UI=OFF`) :
