@@ -28,6 +28,17 @@
   (ou un équivalent) entre dans la base amont ; à réviser si la PR
   évolue (prototype selon son auteur ; ubatch 1024/2048 suspects dans
   ses propres tests, notre profil prod est en -ub 256).
+- calque « code adapté » : biais indexé CUDA/HIP de FLASH_ATTN_EXT et graphe
+  Inkling 2 qui l'utilise (branche pr/cuda-indexed-bias : GPU retiré de
+  ggml-org/llama.cpp#32740 avant merge — commit 9cd195304 inversé, auteur
+  pwilkin — + ggml-org/llama.cpp#32899, garde NaN du MMA). Premier calque de
+  ce type (accepté par le propriétaire le 2026-11-24). Conflit fattn-tile.cuh
+  avec la couche rdna3 résolu à la main : type_K/type_V et
+  use_rows/indexed_bias coexistent ; biais indexé et lignes K/V restent sur
+  le chemin f16. test-backend-ops complet 21438/21438. NB : l'amont refuse
+  le biais indexé côté CPU (ggml-cpu.cpp) — une couche d'attention laissée
+  au CPU n'a donc pas de backend ; sans effet tant que tout tient au GPU.
+  RETRAIT : dès qu'une PR CUDA/HIP du biais indexé entre dans la base amont.
 
 ## Conflits
 
