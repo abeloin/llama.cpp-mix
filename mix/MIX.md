@@ -45,6 +45,7 @@
 - pin: CUDA: fuse tanh-mul-add/sub, router weight normalization and add + rms_norm chains (unslothai/llama.cpp#412, commit 874c88cad) — couche 2, liste A approuvée par mesure (banc r5 : Inkling tg +16,6 % pour l'ensemble des 7 pins).
 - pin: llama : one MoE cache entry per expert weight for looped layers (unslothai/llama.cpp#421, commit b336a7e65) — couche 2, liste A approuvée par mesure (banc r5 : Inkling tg +16,6 % pour l'ensemble des 7 pins).
 - pin: CUDA: fuse the row L2 clip chain (unslothai/llama.cpp#401, commit 6c0e84ddf) — couche 2, liste A approuvée par mesure (banc r5 : Inkling tg +16,6 % pour l'ensemble des 7 pins) ; cas de test du pin non repris (conflit tests seul).
+- pin: CUDA: fuse the depth mix (stack concat, scores, softmax, mix) into one kernel (unslothai/llama.cpp#414, commit f766457c8) — couche 2, liste A approuvée par mesure (banc r5 : Inkling tg +16,6 % pour l'ensemble des 7 pins) ; cas de test du pin non repris (conflit tests seul).
 
 ## Conflits
 
