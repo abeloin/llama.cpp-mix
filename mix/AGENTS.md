@@ -65,6 +65,11 @@ journal.
 - **Pas de réécriture de code importé** : les pins entrent verbatim ; si un
   conflit oblige une adaptation, le diff reste minimal et signalé dans le
   message de merge.
+- **Aucune communication externe autre que les opérations git vers
+  `origin`** : pas d'issue, de PR, de commentaire ou de message vers un
+  dépôt amont ou un tiers, par quelque canal que ce soit (CLI, web,
+  API). Une question à un auteur amont se pose au propriétaire, jamais
+  envoyée par l'agent.
 
 ## Conflits pin/upstream — LA règle de vigilance
 
