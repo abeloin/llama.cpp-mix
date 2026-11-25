@@ -2,7 +2,13 @@
 
 ## Base
 
-- Courante : b12670 (239242322), posée par merge --no-ff (0e4789e95)
+- **Courante (branche mix/wip-b12723, en attente d'accord avant merge dans
+  mix/gfx1101) : b12723 (abca69200)**, choisie par le propriétaire le
+  2026-11-25, posée par merge --no-ff (a940ab925) — 53 commits amont depuis
+  b12670, dont #32940 (clip Inkling 2 en l2_norm + scale), #32218 (DSpark),
+  #32948 (graphe inkling2 allégé), #32500 (fusion RMS_NORM + MUL + MROPE),
+  #31669 (GDN par rejeu). 7 conflits, résolutions au message du merge.
+- Précédente : b12670 (239242322), posée par merge --no-ff (0e4789e95)
   le 2026-11-23 au soir — 378 commits amont, 3 conflits documentés au
   message du merge. Historique : b12292 (af6b5243d), choix 2026-11-23.
 - Couple banc décidé par le propriétaire : vanilla b12670 vs
@@ -44,7 +50,9 @@
 - pin: CUDA: fuse the short convolution chain with its state store and residual (unslothai/llama.cpp#411, commit 7e633d60b) — couche 2, liste A approuvée par mesure (banc r5 : Inkling tg +16,6 % pour l'ensemble des 7 pins).
 - pin: CUDA: fuse tanh-mul-add/sub, router weight normalization and add + rms_norm chains (unslothai/llama.cpp#412, commit 874c88cad) — couche 2, liste A approuvée par mesure (banc r5 : Inkling tg +16,6 % pour l'ensemble des 7 pins).
 - pin: llama : one MoE cache entry per expert weight for looped layers (unslothai/llama.cpp#421, commit b336a7e65) — couche 2, liste A approuvée par mesure (banc r5 : Inkling tg +16,6 % pour l'ensemble des 7 pins).
-- pin: CUDA: fuse the row L2 clip chain (unslothai/llama.cpp#401, commit 6c0e84ddf) — couche 2, liste A approuvée par mesure (banc r5 : Inkling tg +16,6 % pour l'ensemble des 7 pins) ; cas de test du pin non repris (conflit tests seul).
+- RETIRÉ (2026-11-25, base b12723, revert 80211b438 avec ses cas de test) —
+  #32940 n'émet plus le motif à 8 ops ; décision du propriétaire du 2026-11-24.
+  Ancienne ligne : pin: CUDA: fuse the row L2 clip chain (unslothai/llama.cpp#401, commit 6c0e84ddf) — couche 2, liste A approuvée par mesure (banc r5 : Inkling tg +16,6 % pour l'ensemble des 7 pins) ; cas de test du pin non repris (conflit tests seul).
 - pin: CUDA: fuse the depth mix (stack concat, scores, softmax, mix) into one kernel (unslothai/llama.cpp#414, commit f766457c8) — couche 2, liste A approuvée par mesure (banc r5 : Inkling tg +16,6 % pour l'ensemble des 7 pins) ; cas de test du pin non repris (conflit tests seul).
 - rdna3: sélection r3, 12 commits (rafasmour/llama.cpp-RDNA3, master, PR du fork
   #47 #61 #71 #73 #75 #77 #81 #85 #87 #94 #96 #98), cherry-pick -x, auteur
@@ -69,6 +77,16 @@
 ## Conflits
 
 Néant en cours.
+
+- TRANCHÉ le 2026-11-25 par le propriétaire — fusion RMS_NORM + MUL + RoPE
+  multi-sections : l'amont ggml-org#32500 (base b12723) l'emporte sur le
+  commit rdna3 22275994b (rafasmour, même fusion pour MROPE/IMROPE). Au merge
+  de b12723 : rope.cu et l'aiguillage de ggml-cuda.cu pris de l'amont, cas de
+  test de 22275994b retirés. #32500 n'a pas été testée sous ROCm par son
+  auteur : banc Qwen3.6 contre r4 au build gate.
+- Compatibles, conservés tous deux (merge b12723) : rdna3 ee09feff8 (lecture
+  en place des états récurrents) et ggml-org#31669 (rejeu GDN). Le rejeu
+  suppose n_rs_seq > 0, cas où is_s_copy_identity() renvoie déjà faux.
 
 - TRANCHÉ le 2026-11-24 par le propriétaire — biais relatif FA : la
   lignée native (upstream #32740, biais indexé sur FLASH_ATTN_EXT, déjà
