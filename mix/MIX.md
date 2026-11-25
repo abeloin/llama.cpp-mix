@@ -2,9 +2,10 @@
 
 ## Base
 
-- **Courante (branche mix/wip-b12723, en attente d'accord avant merge dans
-  mix/gfx1101) : b12723 (abca69200)**, choisie par le propriétaire le
-  2026-11-25, posée par merge --no-ff (a940ab925) — 53 commits amont depuis
+- **Courante : b12723 (abca69200)**, choisie par le propriétaire le
+  2026-11-25, posée par merge --no-ff (a940ab925) sur mix/wip-b12723, mergée
+  dans mix/gfx1101 après accord du propriétaire (c99f9b647, banc r17), tag
+  mix-b12723-r1 — 53 commits amont depuis
   b12670, dont #32940 (clip Inkling 2 en l2_norm + scale), #32218 (DSpark),
   #32948 (graphe inkling2 allégé), #32500 (fusion RMS_NORM + MUL + MROPE),
   #31669 (GDN par rejeu). 7 conflits, résolutions au message du merge.
