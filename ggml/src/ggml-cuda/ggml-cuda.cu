@@ -1925,15 +1925,16 @@ struct batched_mul_mat_traits<GGML_TYPE_F16> {
     static inline auto convert_nc(ggml_type src_type) { return ggml_get_to_fp16_nc_cuda(src_type); }
 };
 
-// Split-K for F32 GEMMs with a small output and a long reduction (HIP, RDNA3 only).
+// Split-K for F32 GEMMs with a small output and a long reduction (HIP, RDNA3 except gfx1100).
 // rocBLAS picks a 64x128 macro tile without splitting K for such shapes, so a
 // 64 x 256 output with K = 4608 runs on 2 workgroups (~0.5 TFLOPS on gfx1101).
 // The K range is cut into n_split slices computed by one strided batched GEMM
 // into a temporary buffer, then summed into dst.
-// RDNA3 (gfx1100-gfx1153) only: rocBLAS uses its Tensile backend there by default,
-// and the Tensile SGEMM tables of all of them but gfx1100 hold a single solution
-// without split-K. Architectures that default to hipBLASLt (gfx117x, gfx12xx, ...)
-// are left alone: hipBLASLt handles the sliced batched GEMM poorly.
+// Taken on gfx1101-gfx1103 and gfx1150-gfx1153 only: rocBLAS uses its Tensile backend
+// there by default and their Tensile SGEMM tables hold a single solution without
+// split-K. gfx1100 has a tuned table (with split-K solutions) and is left alone until
+// measured. Architectures that default to hipBLASLt (gfx117x, gfx12xx, ...) are left
+// alone too: hipBLASLt handles the sliced batched GEMM poorly.
 static __global__ void k_sum_split_k_f32(const float * __restrict__ part, float * __restrict__ dst,
         const int m, const int n, const int ldc, const int n_split) {
     const int i = blockIdx.x*blockDim.x + threadIdx.x;
@@ -1952,7 +1953,9 @@ static __global__ void k_sum_split_k_f32(const float * __restrict__ part, float 
 static int ggml_cuda_f32_gemm_split_k(const int device, const int64_t m, const int64_t n, const int64_t k) {
 #if defined(GGML_USE_HIP)
     static const bool disabled = getenv("GGML_CUDA_DISABLE_F32_SPLIT_K") != nullptr;
-    if (disabled || k < 2048 || !GGML_CUDA_CC_IS_RDNA3(ggml_cuda_info().devices[device].cc)) {
+    const int cc = ggml_cuda_info().devices[device].cc;
+    // gfx1100 (and the gfx11 generic target, also parsed as 0x1100) excluded: tuned Tensile SGEMM table
+    if (disabled || k < 2048 || !GGML_CUDA_CC_IS_RDNA3(cc) || cc == GGML_CUDA_CC_RDNA3) {
         return 1;
     }
     const int64_t nsm   = ggml_cuda_info().devices[device].nsm;
