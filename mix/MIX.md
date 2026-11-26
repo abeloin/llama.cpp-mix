@@ -76,7 +76,8 @@
 - pin: CUDA: add IQ1_M to MMQ (unslothai/llama.cpp#304, commit e4e1eba07) — couche 2, set B : seul pin retenu (approuvé le 2026-11-24 ; #264 et #251 écartés, #405 DSpark mis de côté). Banc r12 : Qwen3.6-35B-A3B UD-IQ1_M prefill +41 % (1388 → 1954 tok/s), tg inchangé ; test-backend-ops 21766/21766 (merge 45d2f8a84).
 - calque « code à nous » (merge du 2026-11-25, approuvé par le propriétaire) :
   split-K des GEMM F32 à petite sortie et longue réduction sous HIP, RDNA3
-  seulement (4e697a060, cabd9496a, e9a1e1793) — K découpé en tranches calculées
+  sauf gfx1100 (4e697a060, cabd9496a, e9a1e1793, 6b17980a4 ; gfx1100 a une table
+  SGEMM réglée, exclu jusqu'à mesure) — K découpé en tranches calculées
   par un SGEMM strided batched, puis sommées ; GGML_CUDA_DISABLE_F32_SPLIT_K=1
   le coupe. Cause : la table Tensile SGEMM de rocBLAS pour gfx1101-1103 et
   gfx1150-1153 n'a qu'une solution, sans split-K (rocm-libraries 8faffed0) ;
