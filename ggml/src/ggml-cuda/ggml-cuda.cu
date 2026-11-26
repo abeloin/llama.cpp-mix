@@ -1925,6 +1925,53 @@ struct batched_mul_mat_traits<GGML_TYPE_F16> {
     static inline auto convert_nc(ggml_type src_type) { return ggml_get_to_fp16_nc_cuda(src_type); }
 };
 
+// Split-K for F32 GEMMs with a small output and a long reduction (HIP, RDNA3 only).
+// rocBLAS picks a 64x128 macro tile without splitting K for such shapes, so a
+// 64 x 256 output with K = 4608 runs on 2 workgroups (~0.5 TFLOPS on gfx1101).
+// The K range is cut into n_split slices computed by one strided batched GEMM
+// into a temporary buffer, then summed into dst.
+// RDNA3 (gfx1100-gfx1153) only: rocBLAS uses its Tensile backend there by default,
+// and the Tensile SGEMM tables of all of them but gfx1100 hold a single solution
+// without split-K. Architectures that default to hipBLASLt (gfx117x, gfx12xx, ...)
+// are left alone: hipBLASLt handles the sliced batched GEMM poorly.
+static __global__ void k_sum_split_k_f32(const float * __restrict__ part, float * __restrict__ dst,
+        const int m, const int n, const int ldc, const int n_split) {
+    const int i = blockIdx.x*blockDim.x + threadIdx.x;
+    if (i >= m*n) {
+        return;
+    }
+    const int64_t mn = (int64_t) m*n;
+    float sum = 0.0f;
+    for (int s = 0; s < n_split; ++s) {
+        sum += part[s*mn + i];
+    }
+    dst[(int64_t) (i / m)*ldc + i % m] = sum;
+}
+
+// number of K slices for an F32 GEMM of an m x n output with a reduction of length k, 1 = no split
+static int ggml_cuda_f32_gemm_split_k(const int device, const int64_t m, const int64_t n, const int64_t k) {
+#if defined(GGML_USE_HIP)
+    static const bool disabled = getenv("GGML_CUDA_DISABLE_F32_SPLIT_K") != nullptr;
+    if (disabled || k < 2048 || !GGML_CUDA_CC_IS_RDNA3(ggml_cuda_info().devices[device].cc)) {
+        return 1;
+    }
+    const int64_t nsm   = ggml_cuda_info().devices[device].nsm;
+    const int64_t tiles = ((m + 63)/64) * ((n + 127)/128); // macro tiles of the unsplit GEMM
+    if (2*tiles > nsm) {
+        return 1; // enough workgroups already
+    }
+    for (int s = 32; s >= 2; s /= 2) {
+        if (k % s == 0 && k/s >= 64 && tiles*s <= 4*nsm) {
+            return s;
+        }
+    }
+    return 1;
+#else
+    GGML_UNUSED_VARS(device, m, n, k);
+    return 1;
+#endif // defined(GGML_USE_HIP)
+}
+
 template<ggml_type compute_type>
 static void ggml_cuda_mul_mat_cublas_impl(ggml_backend_cuda_context & ctx, const ggml_tensor * src0, const ggml_tensor * src1, ggml_tensor * dst) {
     using traits = batched_mul_mat_traits<compute_type>;
@@ -2060,7 +2107,23 @@ static void ggml_cuda_mul_mat_cublas_impl(ggml_backend_cuda_context & ctx, const
     // Theoretically cublasGemmStridedBatchedEx would always work, even for a single matrix.
     // However, for some old NVIDIA and AMD GPUs the strided/Ex GEMM is much slower,
     //     probably because the internal kernel selection logic is suboptimal.
-    if (compute_type == GGML_TYPE_F32 && ne12 == 1 && ne13 == 1) {
+    const int n_split = compute_type == GGML_TYPE_F32 && ne12 == 1 && ne13 == 1 ?
+        ggml_cuda_f32_gemm_split_k(ctx.device, ne01, ne11, ne10) : 1;
+
+    if (n_split > 1) {
+        const int64_t ks = ne10 / n_split;
+        ggml_cuda_pool_alloc<float> part(ctx.pool(), n_split*ne01*ne11);
+        CUBLAS_CHECK(
+            cublasSgemmStridedBatched(cublas_h, CUBLAS_OP_T, CUBLAS_OP_N,
+                    ne01, ne11, ks,
+                    (const float *) alpha, (const float *) src0_ptr, s01, ks,
+                                           (const float *) src1_ptr, s11, ks,
+                    (const float *) beta,  part.get(), ne01, ne01*ne11,
+                    n_split));
+        const int mn = ne01*ne11;
+        k_sum_split_k_f32<<<(mn + 255)/256, 256, 0, main_stream>>>(part.get(), (float *) dst_ptr, ne01, ne11, ldc, n_split);
+        CUDA_CHECK(cudaGetLastError());
+    } else if (compute_type == GGML_TYPE_F32 && ne12 == 1 && ne13 == 1) {
         CUBLAS_CHECK(
             cublasSgemm(cublas_h, CUBLAS_OP_T, CUBLAS_OP_N,
                     ne01, ne11, ne10,
