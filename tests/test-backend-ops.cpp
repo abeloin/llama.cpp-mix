@@ -15347,7 +15347,7 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
 
     // Decode and speculative verify batches (1-8 tokens) with quantized KV in the llama.cpp cache layout,
     // GQA 2-8 and head sizes 256/512. D=512 needs a kv size that is a multiple of 256 for the GQA kernels.
-    for (auto [type_K, type_V] : {std::pair{GGML_TYPE_Q8_0, GGML_TYPE_Q8_0}, std::pair{GGML_TYPE_Q4_0, GGML_TYPE_Q4_0}, std::pair{GGML_TYPE_Q8_0, GGML_TYPE_Q4_0}}) {
+    for (auto [type_K, type_V] : {std::pair{GGML_TYPE_Q8_0, GGML_TYPE_Q8_0}, std::pair{GGML_TYPE_Q4_0, GGML_TYPE_Q4_0}, std::pair{GGML_TYPE_Q8_0, GGML_TYPE_Q4_0}, std::pair{GGML_TYPE_Q8_0, GGML_TYPE_Q5_1}}) {
         const bool full = type_K == GGML_TYPE_Q8_0 && type_V == GGML_TYPE_Q8_0;
         for (int64_t nr : {2, 4, 6, 8}) {
             if (!full && (nr == 2 || nr == 6)) {
