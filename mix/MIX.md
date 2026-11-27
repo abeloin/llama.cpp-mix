@@ -2,7 +2,7 @@
 
 ## Base
 
-- **En cours : b12801 (2a335259c)**, choisie par le propriétaire le
+- Courante : **b12801 (2a335259c)**, choisie par le propriétaire le
   2026-11-27, sur mix/wip-b12801 — 78 commits amont depuis b12723, dont
   #33060 (fusions CUDA Inkling 2 : short conv, depth mix, contrôleur de
   boucle, clip L2, SiTU), #33073 (DFlash2 Inkling), #33045 (FA tile DKQ 576
@@ -33,7 +33,11 @@
   minimale : #32901 ne fournit que le chargement FP16 (chargeurs q8_0/q4_0
   à écrire dans fattn-common.cuh). Reste : décision du propriétaire sur ce
   report (avant ou après mix/gfx1101), accord du propriétaire.
-- Courante (jusqu'à l'accord) : **b12723 (abca69200)**, choisie par le propriétaire le
+  Mergée dans mix/gfx1101 (86bc48939) après accord du propriétaire le
+  2026-11-27, perte Qwen3.6 à long contexte acceptée ; report des
+  chargeurs q8_0/q4_0 (47fa88cac) sur #32901 demandé en couche suivante.
+  Tag mix-b12801-r1.
+- Précédente : **b12723 (abca69200)**, choisie par le propriétaire le
   2026-11-25, posée par merge --no-ff (a940ab925) sur mix/wip-b12723, mergée
   dans mix/gfx1101 après accord du propriétaire (c99f9b647, banc r17), tag
   mix-b12723-r1 — 53 commits amont depuis
