@@ -2,7 +2,23 @@
 
 ## Base
 
-- **Courante : b12723 (abca69200)**, choisie par le propriétaire le
+- **En cours : b12801 (2a335259c)**, choisie par le propriétaire le
+  2026-11-27, sur mix/wip-b12801 — 78 commits amont depuis b12723, dont
+  #33060 (fusions CUDA Inkling 2 : short conv, depth mix, contrôleur de
+  boucle, clip L2, SiTU), #33073 (DFlash2 Inkling), #33045 (FA tile DKQ 576
+  sous ROCm), #33053 (biais indexé dans le graphe Inkling 2), #33063 (FA
+  avec biais indexé CUDA+HIP), #32533 (src1 BF16 de MUL_MAT). Essai de merge
+  à blanc sur mix/gfx1101 : 14 fichiers, 73 blocs en conflit, surtout FA.
+  Décisions du propriétaire (2026-11-27), avant tout merge : (1) biais
+  indexé — l'amont l'emporte, retrait de nos deux calques (8fcc3e0fc GPU +
+  graphe, b92222d86 CPU), conditions de RETRAIT atteintes ; (2) fusions —
+  #33060 l'emporte, retrait des pins #402, #411, #412, #414 (verbatim, pas
+  de retrait partiel ; les fusions en plus de #412 — normalisation des
+  poids du routeur, add + rms_norm — à revoir seulement si le banc le
+  demande). Retraits par revert sur mix/wip-b12801 avant le merge de la
+  base ; banc contre mix-b12723-r2 puis accord du propriétaire avant
+  mix/gfx1101.
+- Courante (jusqu'à l'accord) : **b12723 (abca69200)**, choisie par le propriétaire le
   2026-11-25, posée par merge --no-ff (a940ab925) sur mix/wip-b12723, mergée
   dans mix/gfx1101 après accord du propriétaire (c99f9b647, banc r17), tag
   mix-b12723-r1 — 53 commits amont depuis
