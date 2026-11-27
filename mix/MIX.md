@@ -150,6 +150,19 @@
   couverte : q5_1/q4_0 (drafter MTP de Qwen3.6). Conflit mécanique attendu
   avec ggml-org#33178 (renommage indexed_bias → bias_indexed). RETRAIT : si
   l'amont prend une lecture directe des K/V quantifiés dans le noyau tile.
+- mix: paire K/V q5_1/q4_0 en lecture directe par le noyau FA tile
+  (baeadfa74 sur mix/wip-fattn-tile-q51q40, extension à nous de la couche
+  rdna3 47fa88cac portée ci-dessus) : instances dkq256/512 générées,
+  prédicat de routage et cas test-backend-ops. Couvre le cache propre du
+  drafter MTP de Qwen3.6 (1 couche, tête 256, GQA 8). Le drafter de
+  Gemma 4 (gemma4-assistant) n'en profite pas : il partage le KV q8_0/q5_1
+  du modèle principal (src/llama-model.cpp:3656), -ctkd/-ctvd y sont
+  inertes. Bancs r23-r25d [bon, en profondeur] : Qwen3.6 serveur glouton
+  à 52753 tokens tg +3.5 % (plages disjointes 4/4), textes identiques ;
+  neutre à 20k (+0.3 %) ; Gemma neutre par construction (r25c +0.1 %),
+  le −3 % de r23 était du bruit d'acceptation. Noyau tile 2–4× plus
+  rapide que vec sur ces formes (test-backend-ops perf). RETRAIT : avec
+  la couche rdna3 ci-dessus.
 
 ## Conflits
 
