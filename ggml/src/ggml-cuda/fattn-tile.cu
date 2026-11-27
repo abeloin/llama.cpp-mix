@@ -70,6 +70,28 @@ void ggml_cuda_flash_attn_ext_tile(ggml_backend_cuda_context & ctx, ggml_tensor 
         }
     }
 
+    // RDNA3, head sizes 256/512, small batches: read quantized K/V directly.
+    if (ggml_cuda_fattn_tile_direct_kv(ggml_cuda_info().devices[ggml_cuda_get_device()].cc, dst)) {
+#define FATTN_TILE_DIRECT_KV_CASE(type_K_case, type_V_case)                                                          \
+        if constexpr (GGML_CUDA_FA_##type_K_case##_##type_V_case) {                                                  \
+            if (K->type == GGML_TYPE_##type_K_case && V->type == GGML_TYPE_##type_V_case) {                          \
+                if (K->ne[0] == 256) {                                                                               \
+                    ggml_cuda_flash_attn_ext_tile_case<256, 256, GGML_TYPE_##type_K_case, GGML_TYPE_##type_V_case>(ctx, dst); \
+                } else {                                                                                             \
+                    ggml_cuda_flash_attn_ext_tile_case<512, 512, GGML_TYPE_##type_K_case, GGML_TYPE_##type_V_case>(ctx, dst); \
+                }                                                                                                    \
+                return;                                                                                              \
+            }                                                                                                        \
+        }
+
+        FATTN_TILE_DIRECT_KV_CASE(Q8_0, Q8_0)
+        FATTN_TILE_DIRECT_KV_CASE(Q4_0, Q4_0)
+        FATTN_TILE_DIRECT_KV_CASE(Q8_0, Q4_0)
+        FATTN_TILE_DIRECT_KV_CASE(Q8_0, Q5_1)
+#undef FATTN_TILE_DIRECT_KV_CASE
+        GGML_ABORT("fatal error");
+    }
+
     // Fallback: convert K and V to F16.
     ggml_cuda_flash_attn_ext_tile_switch_head_size<GGML_TYPE_F16, GGML_TYPE_F16>(ctx, dst);
 }

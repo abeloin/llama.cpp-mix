@@ -928,6 +928,112 @@ struct flash_attn_load_tile_impl<warp_size, nwarps, I, J, stride_tile, false, oo
     }
 };
 
+// Quantized K/V (q4_0, q5_1, q8_0) read directly by the tile kernel: rows are dequantized while they are
+// copied to SRAM instead of converting the whole K/V cache to f16 beforehand. KV points to the first block
+// of the row slice to load and stride_KV is in blocks. Only the plain variant (no cp.async, sparse rows,
+// indirection or swizzle) is implemented.
+template <typename T_block> struct fattn_kv_block_traits;
+template <> struct fattn_kv_block_traits<block_q4_0> { static constexpr int qk = QK4_0; };
+template <> struct fattn_kv_block_traits<block_q5_1> { static constexpr int qk = QK5_1; };
+template <> struct fattn_kv_block_traits<block_q8_0> { static constexpr int qk = QK8_0; };
+
+template <typename T_block, typename T, int ne>
+static __device__ __forceinline__ void flash_attn_dequantize_kv(const T_block * const __restrict__ row, T * const __restrict__ dst, const int i0) {
+    constexpr int ne_1 = ne < 4 ? ne : 4;
+    static_assert(ne % ne_1 == 0, "bad ne");
+#pragma unroll
+    for (int l = 0; l < ne; l += ne_1) {
+        if constexpr (std::is_same_v<T_block, block_q4_0>) {
+            dequantize_V_q4_0<T, ne_1>(row, dst + l, i0 + l);
+        } else if constexpr (std::is_same_v<T_block, block_q5_1>) {
+            dequantize_V_q5_1<T, ne_1>(row, dst + l, i0 + l);
+        } else {
+            static_assert(std::is_same_v<T_block, block_q8_0>, "bad type");
+            dequantize_V_q8_0<T, ne_1>(row, dst + l, i0 + l);
+        }
+    }
+}
+
+template <int warp_size, int nwarps, int I, int J, int stride_tile, bool oob_check, typename T_block, typename T_dst>
+struct flash_attn_load_tile_quantized {
+    static __device__ __forceinline__ void load(
+            const T_block * const __restrict__ KV, T_dst * const __restrict__ tile_KV, const int D2, const int stride_KV,
+            const int k_VKQ_0, const int i_sup) {
+        constexpr int cpy_nb = 16;
+        constexpr int cpy_ne = cpy_nb / 4;
+        // Values per chunk: 8 halves for a half2 tile, 4 floats for a float tile, as in the f16 loaders.
+        constexpr int ne_chunk = std::is_same_v<T_dst, half2> ? 2*cpy_ne : cpy_ne;
+        using T_val = std::conditional_t<std::is_same_v<T_dst, half2>, half, float>;
+
+        static_assert(std::is_same_v<T_dst, half2> || std::is_same_v<T_dst, float>, "bad T_dst");
+        static_assert(J % 8 == 0, "bad J");
+        static_assert(J % fattn_kv_block_traits<T_block>::qk == 0, "bad J");
+
+        const int chunks_per_row = 2*D2 / ne_chunk;
+
+        auto load_step = [&] __device__ (const int n) {
+            const int stride_k = warp_size >> n;
+            if (stride_k == 0) {
+                return;
+            }
+
+            const int k0_start = stride_k == warp_size ? 0 : chunks_per_row - chunks_per_row % (2*stride_k);
+            const int k0_stop  =                             chunks_per_row - chunks_per_row % (1*stride_k);
+            const int stride_i = warp_size / stride_k;
+
+            if (k0_start == k0_stop) {
+                return;
+            }
+
+#pragma unroll
+            for (int i0 = 0; i0 < I; i0 += nwarps*stride_i) {
+                const int i = i0 + threadIdx.y*stride_i + (stride_k == warp_size ? 0 : threadIdx.x / stride_k);
+
+                if (i0 + nwarps*stride_i > I && i >= I) {
+                    break;
+                }
+
+#pragma unroll
+                for (int k0 = k0_start; k0 < k0_stop; k0 += stride_k) {
+                    const int k = k0 + (stride_k == warp_size ? threadIdx.x : threadIdx.x % stride_k);
+
+                    __align__(16) T_val tmp[ne_chunk];
+                    if (!oob_check || i < i_sup) {
+                        flash_attn_dequantize_kv<T_block, T_val, ne_chunk>(KV + int64_t(k_VKQ_0 + i)*stride_KV, tmp, k*ne_chunk);
+                    } else {
+#pragma unroll
+                        for (int l = 0; l < ne_chunk; ++l) {
+                            tmp[l] = T_val(0.0f);
+                        }
+                    }
+                    ggml_cuda_memcpy_1<sizeof(tmp)>(tile_KV + i*stride_tile + k*cpy_ne, tmp);
+                }
+            }
+        };
+        ggml_cuda_unroll<7>{}(load_step);
+    }
+};
+
+#define FATTN_LOAD_TILE_QUANTIZED(T_block, T_dst)                                                                          \
+template <int warp_size, int nwarps, int I, int J, int stride_tile, bool oob_check>                                       \
+struct flash_attn_load_tile_impl<warp_size, nwarps, I, J, stride_tile, false, oob_check, false, false, false, T_block, T_dst> { \
+    static __device__ __forceinline__ void load(                                                                          \
+            const T_block * const __restrict__ KV, T_dst * const __restrict__ tile_KV, const int D2, const int stride_KV,   \
+            const int k_VKQ_0, const int i_sup, const int32_t * const __restrict__ indices) {                              \
+        GGML_UNUSED(indices);                                                                                             \
+        flash_attn_load_tile_quantized<warp_size, nwarps, I, J, stride_tile, oob_check, T_block, T_dst>::load(           \
+            KV, tile_KV, D2, stride_KV, k_VKQ_0, i_sup);                                                                  \
+    }                                                                                                                     \
+}
+
+FATTN_LOAD_TILE_QUANTIZED(block_q4_0, half2);
+FATTN_LOAD_TILE_QUANTIZED(block_q4_0, float);
+FATTN_LOAD_TILE_QUANTIZED(block_q5_1, half2);
+FATTN_LOAD_TILE_QUANTIZED(block_q5_1, float);
+FATTN_LOAD_TILE_QUANTIZED(block_q8_0, half2);
+FATTN_LOAD_TILE_QUANTIZED(block_q8_0, float);
+#undef FATTN_LOAD_TILE_QUANTIZED
+
 template <int warp_size, int nwarps, int I, int J, int stride_tile, bool use_cp_async, bool oob_check, bool use_sparse, bool KV_indirection, bool use_swizzle, typename T_src, typename T_dst>
 static __device__ __forceinline__ void flash_attn_load_tile(
         const T_src * const __restrict__ KV, T_dst * const __restrict__ tile_KV, const int D2, const int stride_KV,
@@ -941,8 +1047,24 @@ template <ggml_type type>
 static __host__ __device__ auto ggml_cuda_fattn_kv_dtype() {
     if constexpr (type == GGML_TYPE_F16) {
         return half2{};
+    } else if constexpr (type == GGML_TYPE_Q4_0) {
+        return block_q4_0{};
+    } else if constexpr (type == GGML_TYPE_Q5_1) {
+        return block_q5_1{};
+    } else if constexpr (type == GGML_TYPE_Q8_0) {
+        return block_q8_0{};
     } else {
         static_assert(type == -1, "bad type");
+    }
+}
+
+// Offset in units of the K/V C++ type of column k of a row, k must be a multiple of the block size for quantized types:
+template <typename T_KV>
+static __device__ __forceinline__ int ggml_cuda_fattn_kv_offset(const int k) {
+    if constexpr (std::is_same_v<T_KV, half2>) {
+        return k/2;
+    } else {
+        return k/fattn_kv_block_traits<T_KV>::qk;
     }
 }
 
