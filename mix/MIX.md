@@ -2,7 +2,38 @@
 
 ## Base
 
-- **Courante : b12723 (abca69200)**, choisie par le propriétaire le
+- **En cours : b12801 (2a335259c)**, choisie par le propriétaire le
+  2026-11-27, sur mix/wip-b12801 — 78 commits amont depuis b12723, dont
+  #33060 (fusions CUDA Inkling 2 : short conv, depth mix, contrôleur de
+  boucle, clip L2, SiTU), #33073 (DFlash2 Inkling), #33045 (FA tile DKQ 576
+  sous ROCm), #33053 (biais indexé dans le graphe Inkling 2), #33063 (FA
+  avec biais indexé CUDA+HIP), #32533 (src1 BF16 de MUL_MAT). Essai de merge
+  à blanc sur mix/gfx1101 : 14 fichiers, 73 blocs en conflit, surtout FA.
+  Décisions du propriétaire (2026-11-27), avant tout merge : (1) biais
+  indexé — l'amont l'emporte, retrait de nos deux calques (8fcc3e0fc GPU +
+  graphe, b92222d86 CPU), conditions de RETRAIT atteintes ; (2) fusions —
+  #33060 l'emporte, retrait des pins #402, #411, #412, #414 (verbatim, pas
+  de retrait partiel ; les fusions en plus de #412 — normalisation des
+  poids du routeur, add + rms_norm — à revoir seulement si le banc le
+  demande). Retraits par revert sur mix/wip-b12801 avant le merge de la
+  base ; banc contre mix-b12723-r2 puis accord du propriétaire avant
+  mix/gfx1101.
+  Posée par merge --no-ff (f6127ef44) après 8 reverts (4 pins, 2 calques
+  biais indexé, 2 commits rdna3 du noyau tile) : 6 fichiers en conflit,
+  résolutions au message du merge (dont le report des fusions RDNA3 dans
+  fusion.cu, #33087). Build recette prod vert, test-backend-ops ROCm0
+  22658/22658. Banc r21 (2026-11-27, témoin mix-b12723-r2, candidat
+  banc-20261127-b12801 = 08dcda0d8, A/B alterné, builds frais) : Inkling
+  q2-131k tg +17.5 %, q4-131k tg +14 % (fusions #33060 et biais indexé
+  amont), prefill +1 % ; Inkling Q2 pp4096 ub 256 +4.2 % (split-K actif) ;
+  Gemma 4 prefill +8 %, tg neutre ; Qwen3.6 serveur (16.9k, MTP) neutre,
+  mais llama-bench tg64 -0.5 % à 8k, -3.3 % à 32k, -7.3 % à 64k de
+  profondeur — coût du retrait de 47fa88cac (le cache q8_0/q4_0 repasse
+  en f16 à chaque appel du noyau tile). Le report n'est pas une adaptation
+  minimale : #32901 ne fournit que le chargement FP16 (chargeurs q8_0/q4_0
+  à écrire dans fattn-common.cuh). Reste : décision du propriétaire sur ce
+  report (avant ou après mix/gfx1101), accord du propriétaire.
+- Courante (jusqu'à l'accord) : **b12723 (abca69200)**, choisie par le propriétaire le
   2026-11-25, posée par merge --no-ff (a940ab925) sur mix/wip-b12723, mergée
   dans mix/gfx1101 après accord du propriétaire (c99f9b647, banc r17), tag
   mix-b12723-r1 — 53 commits amont depuis
@@ -35,7 +66,8 @@
   (ou un équivalent) entre dans la base amont ; à réviser si la PR
   évolue (prototype selon son auteur ; ubatch 1024/2048 suspects dans
   ses propres tests, notre profil prod est en -ub 256).
-- calque « code adapté » : biais indexé CUDA/HIP de FLASH_ATTN_EXT et graphe
+- RETIRÉ (2026-11-27, base b12801, revert 517cf0345) — condition de RETRAIT atteinte : biais indexé CUDA/HIP de l'amont (ggml-org#33063) et graphe Inkling 2 qui l'utilise (ggml-org#33053), décision du propriétaire. Part avec lui la garde NaN du MMA (ggml-org#32899, encore ouverte) : l'amont ne passe pas par le MMA avec biais indexé, et ses cas de rangée entièrement masquée (mask_row=1) passent (test-backend-ops 22658/22658). Ancienne ligne :
+  calque « code adapté » : biais indexé CUDA/HIP de FLASH_ATTN_EXT et graphe
   Inkling 2 qui l'utilise (branche pr/cuda-indexed-bias : GPU retiré de
   ggml-org/llama.cpp#32740 avant merge — commit 9cd195304 inversé, auteur
   pwilkin — + ggml-org/llama.cpp#32899, garde NaN du MMA). Premier calque de
@@ -47,14 +79,18 @@
   calque « code à nous » ci-dessous.
   RETRAIT : dès qu'une PR CUDA/HIP du biais indexé entre dans la base amont.
 - pin: CUDA: pack several short rows per block in mul_mat_vec_f (unslothai/llama.cpp#400, commit a5667a9c0) — couche 2, liste A approuvée par mesure (banc r5 : Inkling tg +16,6 % pour l'ensemble des 7 pins).
-- pin: CUDA: fuse the SiTU gate of the MoE experts (unslothai/llama.cpp#402, commit 0bfd204bd) — couche 2, liste A approuvée par mesure (banc r5 : Inkling tg +16,6 % pour l'ensemble des 7 pins).
-- pin: CUDA: fuse the short convolution chain with its state store and residual (unslothai/llama.cpp#411, commit 7e633d60b) — couche 2, liste A approuvée par mesure (banc r5 : Inkling tg +16,6 % pour l'ensemble des 7 pins).
-- pin: CUDA: fuse tanh-mul-add/sub, router weight normalization and add + rms_norm chains (unslothai/llama.cpp#412, commit 874c88cad) — couche 2, liste A approuvée par mesure (banc r5 : Inkling tg +16,6 % pour l'ensemble des 7 pins).
+- RETIRÉ (2026-11-27, base b12801, revert a0f05432b) — remplacé par la fusion SiTU de ggml-org#33060, décision du propriétaire. Ancienne ligne :
+  pin: CUDA: fuse the SiTU gate of the MoE experts (unslothai/llama.cpp#402, commit 0bfd204bd) — couche 2, liste A approuvée par mesure (banc r5 : Inkling tg +16,6 % pour l'ensemble des 7 pins).
+- RETIRÉ (2026-11-27, base b12801, revert 77832f6a9) — remplacé par la fusion short conv de ggml-org#33060, décision du propriétaire. Ancienne ligne :
+  pin: CUDA: fuse the short convolution chain with its state store and residual (unslothai/llama.cpp#411, commit 7e633d60b) — couche 2, liste A approuvée par mesure (banc r5 : Inkling tg +16,6 % pour l'ensemble des 7 pins).
+- RETIRÉ (2026-11-27, base b12801, revert b878455a6, avec ses cas de test) — remplacé par la fusion du contrôleur de boucle de ggml-org#33060, décision du propriétaire ; ses fusions en plus (normalisation des poids du routeur, add + rms_norm) partent avec lui, à revoir seulement si le banc le demande. Ancienne ligne :
+  pin: CUDA: fuse tanh-mul-add/sub, router weight normalization and add + rms_norm chains (unslothai/llama.cpp#412, commit 874c88cad) — couche 2, liste A approuvée par mesure (banc r5 : Inkling tg +16,6 % pour l'ensemble des 7 pins).
 - pin: llama : one MoE cache entry per expert weight for looped layers (unslothai/llama.cpp#421, commit b336a7e65) — couche 2, liste A approuvée par mesure (banc r5 : Inkling tg +16,6 % pour l'ensemble des 7 pins).
 - RETIRÉ (2026-11-25, base b12723, revert 80211b438 avec ses cas de test) —
   #32940 n'émet plus le motif à 8 ops ; décision du propriétaire du 2026-11-24.
   Ancienne ligne : pin: CUDA: fuse the row L2 clip chain (unslothai/llama.cpp#401, commit 6c0e84ddf) — couche 2, liste A approuvée par mesure (banc r5 : Inkling tg +16,6 % pour l'ensemble des 7 pins) ; cas de test du pin non repris (conflit tests seul).
-- pin: CUDA: fuse the depth mix (stack concat, scores, softmax, mix) into one kernel (unslothai/llama.cpp#414, commit f766457c8) — couche 2, liste A approuvée par mesure (banc r5 : Inkling tg +16,6 % pour l'ensemble des 7 pins) ; cas de test du pin non repris (conflit tests seul).
+- RETIRÉ (2026-11-27, base b12801, revert f0a128d37) — remplacé par la fusion depth mix de ggml-org#33060, décision du propriétaire ; ses cas de test (test_depth_mix_fuse, réintégrés par 52b91bc1a) restent, valides sur le chemin non fusionné. Ancienne ligne :
+  pin: CUDA: fuse the depth mix (stack concat, scores, softmax, mix) into one kernel (unslothai/llama.cpp#414, commit f766457c8) — couche 2, liste A approuvée par mesure (banc r5 : Inkling tg +16,6 % pour l'ensemble des 7 pins) ; cas de test du pin non repris (conflit tests seul).
 - rdna3: sélection r3, 12 commits (rafasmour/llama.cpp-RDNA3, master, PR du fork
   #47 #61 #71 #73 #75 #77 #81 #85 #87 #94 #96 #98), cherry-pick -x, auteur
   conservé ; #43 (cefeb9b41) vide ici, son changement est déjà présent.
@@ -63,7 +99,14 @@
   #77 corrige l'issue amont #30175 (prefill FA non déterministe sur RDNA3).
   Mesures : banc r6 (Gemma4 tg +12,7 %, prefill +9,8 % ; Qwen3.6 +8,3 % ;
   Inkling +1,7 %) et r8 (ensemble).
-- calque « code à nous » (b92222d86, merge 52b91bc1a, approuvé par le
+  RETIRÉS de cette sélection (2026-11-27, base b12801, décision du propriétaire) :
+  47fa88cac (lecture directe des K/V q8_0/q4_0 dans le noyau FA tile, revert
+  24fc22af4) et 1d51ca3ef (staging K/V de la tête 256 du noyau tile, revert
+  b399584bf) — le chargement du noyau tile a été réécrit par ggml-org#32901 ;
+  à reporter sur ce refactor seulement si le banc le justifie (seul Qwen3.6,
+  KV q8_0/q4_0, en profitait).
+- RETIRÉ (2026-11-27, base b12801, revert b4a3acfdb) — condition de RETRAIT atteinte : l'amont valide FLASH_ATTN_EXT avec biais indexé côté CPU (ggml_validate_flash_attn_ext_indexed_bias) au lieu de le refuser. Ancienne ligne :
+  calque « code à nous » (b92222d86, merge 52b91bc1a, approuvé par le
   propriétaire le 2026-11-24) : ggml-cpu accepte FLASH_ATTN_EXT avec biais
   indexé (retrait d'une garde de supports_op ajoutée par
   ggml-org/llama.cpp#32740 ; le noyau CPU de référence est amont). Motif :

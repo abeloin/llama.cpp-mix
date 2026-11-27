@@ -790,7 +790,8 @@ public:
 };
 
 // hybrid iswa memory with a per-head attention bias that depends on the distance from the query to the cell (Inkling)
-// The visibility mask and distances use the same cache cell order.
+// the KQ masks are always dense (rows == nullptr) and are filled from the same cells as the distances, so that the bias
+// gathered by distance lines up with the mask
 class llm_graph_input_mem_hybrid_iswa_rel : public llm_graph_input_i {
 public:
     llm_graph_input_mem_hybrid_iswa_rel(
@@ -1355,7 +1356,7 @@ struct llm_graph_context {
                 int64_t   n_kv_max,
                   float   kq_scale,
                     int   il,
-            ggml_tensor * bias_table = nullptr,
+            ggml_tensor * bias_table = nullptr,   // [n_bins, n_head_q, n_tokens]
             ggml_tensor * bias_indices = nullptr) const;
 
     llm_graph_input_attn_no_cache * build_attn_inp_no_cache() const;
@@ -1561,7 +1562,6 @@ struct llm_graph_context {
             uint32_t extent,
             uint32_t extent_swa) const;
 
-    // Gather the per-head bias by distance and add it to the visibility mask.
     ggml_tensor * build_attn(
             llm_graph_input_mem_hybrid_iswa_rel * inp,
             ggml_tensor * wo,
