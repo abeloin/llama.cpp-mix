@@ -134,6 +134,22 @@
   llama-mix-notes, banc/notes/pr-amont-split-k-f32-hip.md. RETRAIT : si l'amont
   prend un correctif équivalent, ou si rocBLAS/hipBLASLt choisit bien ces formes
   sur RDNA3 (re-mesurer avec le micro-test banc/microtests/sgemm-splitk.cpp).
+- rdna3: lecture directe des K/V quantifiés par le noyau FA tile, portée sur
+  le refactor du chargement FA (rafasmour/llama.cpp-RDNA3, commit 47fa88cac,
+  porté sur ggml-org#32901 ; ad6d5ab99 sur mix/wip-fattn-tile-qkv). Report
+  NON verbatim (le code d'origine ne s'applique plus après #32901) : chargeurs
+  quantifiés comme spécialisations de flash_attn_load_tile_impl, routage
+  TILE pour ne1 ≤ 8 avec GQA ≥ 2 sur RDNA3_0, têtes 256/512 K == V, sans
+  softcap, biais indexé ni lignes K/V. Ajout à nous : chargeur q5_1 et paire
+  q8_0/q5_1 (Gemma 4) en plus de q8_0/q8_0, q4_0/q4_0, q8_0/q4_0 ; cas
+  test-backend-ops q8_0/q5_1 repris de 2d95e58b1. test-backend-ops complet
+  22688/22688 (FLASH_ATTN_EXT 4566/4566).
+  Banc r22 (contre mix-b12801-r1) [bon] : Qwen3.6 tg64 +8.2 % à 64k (perte
+  r21 reprise), serveur MTP +3.4 % (chevauchant) ; Gemma 4 tg64 +12 à +24 %
+  à 32-64k, serveur MTP +7.4 % (plages disjointes) ; prefill neutre. Non
+  couverte : q5_1/q4_0 (drafter MTP de Qwen3.6). Conflit mécanique attendu
+  avec ggml-org#33178 (renommage indexed_bias → bias_indexed). RETRAIT : si
+  l'amont prend une lecture directe des K/V quantifiés dans le noyau tile.
 
 ## Conflits
 
