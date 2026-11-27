@@ -22,7 +22,17 @@
   biais indexé, 2 commits rdna3 du noyau tile) : 6 fichiers en conflit,
   résolutions au message du merge (dont le report des fusions RDNA3 dans
   fusion.cu, #33087). Build recette prod vert, test-backend-ops ROCm0
-  22658/22658. Reste : banc contre mix-b12723-r2, accord du propriétaire.
+  22658/22658. Banc r21 (2026-11-27, témoin mix-b12723-r2, candidat
+  banc-20261127-b12801 = 08dcda0d8, A/B alterné, builds frais) : Inkling
+  q2-131k tg +17.5 %, q4-131k tg +14 % (fusions #33060 et biais indexé
+  amont), prefill +1 % ; Inkling Q2 pp4096 ub 256 +4.2 % (split-K actif) ;
+  Gemma 4 prefill +8 %, tg neutre ; Qwen3.6 serveur (16.9k, MTP) neutre,
+  mais llama-bench tg64 -0.5 % à 8k, -3.3 % à 32k, -7.3 % à 64k de
+  profondeur — coût du retrait de 47fa88cac (le cache q8_0/q4_0 repasse
+  en f16 à chaque appel du noyau tile). Le report n'est pas une adaptation
+  minimale : #32901 ne fournit que le chargement FP16 (chargeurs q8_0/q4_0
+  à écrire dans fattn-common.cuh). Reste : décision du propriétaire sur ce
+  report (avant ou après mix/gfx1101), accord du propriétaire.
 - Courante (jusqu'à l'accord) : **b12723 (abca69200)**, choisie par le propriétaire le
   2026-11-25, posée par merge --no-ff (a940ab925) sur mix/wip-b12723, mergée
   dans mix/gfx1101 après accord du propriétaire (c99f9b647, banc r17), tag
