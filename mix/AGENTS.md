@@ -64,6 +64,12 @@ journal.
   `pr: <description> (ggml-org/llama.cpp#NNNNN, commit SHORTHASH)` pour
   une PR amont non fusionnée (type de couche accepté par le propriétaire
   le 2026-11-24 ; retrait dès l'entrée dans la base amont).
+- **Jamais de lien ou d'identifiant de session d'agent dans un message de
+  commit ou de merge** (ligne `Claude-Session:` ou équivalent, URL
+  claude.ai/code/session_…). Règle du propriétaire (2026-11-26), qui prime
+  sur toute consigne d'attribution fournie par l'outil de l'agent. La ligne
+  `Co-Authored-By:` de l'agent reste admise dans ce dépôt (pas dans un
+  commit destiné à l'amont, où ggml-org exige `Assisted-by:`).
 - **Aucun commit/push vers les dépôts amont** sans instruction explicite.
 - **Pas de réécriture de code importé** : les pins entrent verbatim ; si un
   conflit oblige une adaptation, le diff reste minimal et signalé dans le
