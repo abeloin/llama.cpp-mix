@@ -88,6 +88,7 @@ void ggml_cuda_flash_attn_ext_tile(ggml_backend_cuda_context & ctx, ggml_tensor 
         FATTN_TILE_DIRECT_KV_CASE(Q4_0, Q4_0)
         FATTN_TILE_DIRECT_KV_CASE(Q8_0, Q4_0)
         FATTN_TILE_DIRECT_KV_CASE(Q8_0, Q5_1)
+        FATTN_TILE_DIRECT_KV_CASE(Q5_1, Q4_0)
 #undef FATTN_TILE_DIRECT_KV_CASE
         GGML_ABORT("fatal error");
     }

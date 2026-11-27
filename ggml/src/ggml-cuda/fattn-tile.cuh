@@ -404,7 +404,8 @@ static inline bool ggml_cuda_fattn_tile_direct_kv(const int cc, const ggml_tenso
     return (GGML_CUDA_FA_Q8_0_Q8_0 && K->type == GGML_TYPE_Q8_0 && V->type == GGML_TYPE_Q8_0) ||
            (GGML_CUDA_FA_Q4_0_Q4_0 && K->type == GGML_TYPE_Q4_0 && V->type == GGML_TYPE_Q4_0) ||
            (GGML_CUDA_FA_Q8_0_Q4_0 && K->type == GGML_TYPE_Q8_0 && V->type == GGML_TYPE_Q4_0) ||
-           (GGML_CUDA_FA_Q8_0_Q5_1 && K->type == GGML_TYPE_Q8_0 && V->type == GGML_TYPE_Q5_1);
+           (GGML_CUDA_FA_Q8_0_Q5_1 && K->type == GGML_TYPE_Q8_0 && V->type == GGML_TYPE_Q5_1) ||
+           (GGML_CUDA_FA_Q5_1_Q4_0 && K->type == GGML_TYPE_Q5_1 && V->type == GGML_TYPE_Q4_0);
 }
 
 // Function that performs a single iteration in for the KQ matrix multiplication:
@@ -1337,3 +1338,5 @@ extern DECL_FATTN_TILE_CASE(256, 256, GGML_TYPE_Q8_0, GGML_TYPE_Q4_0);
 extern DECL_FATTN_TILE_CASE(512, 512, GGML_TYPE_Q8_0, GGML_TYPE_Q4_0);
 extern DECL_FATTN_TILE_CASE(256, 256, GGML_TYPE_Q8_0, GGML_TYPE_Q5_1);
 extern DECL_FATTN_TILE_CASE(512, 512, GGML_TYPE_Q8_0, GGML_TYPE_Q5_1);
+extern DECL_FATTN_TILE_CASE(256, 256, GGML_TYPE_Q5_1, GGML_TYPE_Q4_0);
+extern DECL_FATTN_TILE_CASE(512, 512, GGML_TYPE_Q5_1, GGML_TYPE_Q4_0);
